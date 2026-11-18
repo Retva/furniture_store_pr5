@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/breakpoints.dart';
 import '../core/formatting.dart';
 import '../models/entity.dart';
+import '../state/auth_notifier.dart';
 import '../state/detail_state.dart';
 import '../state/entity_detail_notifier.dart';
 import '../state/reference_data_notifier.dart';
@@ -40,6 +41,7 @@ class EntityDetailPage<T extends Entity> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final notifier = context.watch<EntityDetailNotifier<T>>();
+    context.watch<AuthNotifier>();
     context.watch<ReferenceDataNotifier>();
 
     final Widget body = switch (notifier.state) {
@@ -88,6 +90,7 @@ class EntityDetailPage<T extends Entity> extends StatelessWidget {
   ) {
     final theme = Theme.of(context);
     final name = title(item);
+    final perms = context.read<AuthNotifier>().permissions;
 
     Future<void> run(
       Future<void> Function() action,
@@ -157,33 +160,37 @@ class EntityDetailPage<T extends Entity> extends StatelessWidget {
           runSpacing: 12,
           children: [
             if (!item.isDeleted) ...[
-              FilledButton.icon(
-                onPressed: notifier.busy
-                    ? null
-                    : () => context.go('$basePath/${item.id}/edit'),
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Изменить'),
-              ),
-              OutlinedButton.icon(
-                onPressed: notifier.busy ? null : softDelete,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Удалить'),
-              ),
+              if (perms.canManageCatalog)
+                FilledButton.icon(
+                  onPressed: notifier.busy
+                      ? null
+                      : () => context.go('$basePath/${item.id}/edit'),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Изменить'),
+                ),
+              if (perms.canManageCatalog)
+                OutlinedButton.icon(
+                  onPressed: notifier.busy ? null : softDelete,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Удалить'),
+                ),
             ] else ...[
-              FilledButton.icon(
-                onPressed: notifier.busy
-                    ? null
-                    : () => run(notifier.restore, 'Запись восстановлена'),
-                icon: const Icon(Icons.restore_from_trash_outlined),
-                label: const Text('Восстановить'),
-              ),
-              OutlinedButton.icon(
-                onPressed: notifier.busy ? null : hardDelete,
-                icon: const Icon(Icons.delete_forever_outlined),
-                label: const Text('Удалить навсегда'),
-              ),
+              if (perms.canRestore)
+                FilledButton.icon(
+                  onPressed: notifier.busy
+                      ? null
+                      : () => run(notifier.restore, 'Запись восстановлена'),
+                  icon: const Icon(Icons.restore_from_trash_outlined),
+                  label: const Text('Восстановить'),
+                ),
+              if (perms.canHardDelete)
+                OutlinedButton.icon(
+                  onPressed: notifier.busy ? null : hardDelete,
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Удалить навсегда'),
+                ),
             ],
-            ...?extraActions?.call(context, item),
+            if (perms.canPlaceOrders) ...?extraActions?.call(context, item),
           ],
         ),
       ],

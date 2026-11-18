@@ -1,51 +1,32 @@
-import 'package:dio/dio.dart';
+import '../models/role.dart';
+import '../state/auth_notifier.dart';
 
-/// Учётная запись, под которой приложение обращается к API, и полученный токен доступа.
+/// Мост между перехватчиком Dio и [AuthNotifier]: токен и роль берутся
+/// из сессии пользователя, а не из зашитой служебной учётки.
 class ApiSession {
-  ApiSession({required this.username, required this.password});
+  ApiSession(this.auth);
 
-  String username;
-  String password;
+  final AuthNotifier auth;
 
-  String? accessToken;
+  String? get accessToken => auth.accessToken;
 
-  /// Роль, которую сервер вернул при входе: admin, manager, viewer.
-  String? role;
+  String? get role => auth.user?.role.code;
 
-  Future<String>? _pending;
+  String? get username => auth.user?.username;
 
-  /// Учётные записи мок-сервера — для переключателя ролей.
+  /// Пометка запроса, которому токен не нужен (вход, регистрация, refresh).
+  static const String skipAuth = 'skipAuth';
+
+  /// Учётные записи мок-сервера — для подсказок на экране входа.
   static const Map<String, String> demoAccounts = {
     'admin': 'admin123',
     'manager': 'manager123',
     'viewer': 'viewer123',
   };
 
-  void switchUser(String username) {
-    this.username = username;
-    password = demoAccounts[username] ?? password;
-    accessToken = null;
-    role = null;
-  }
-
-  /// Вход. Параллельные запросы ждут один и тот же вход, а не входят
-  /// каждый сам по себе.
-  Future<String> login(Dio dio) {
-    return _pending ??= _login(dio).whenComplete(() => _pending = null);
-  }
-
-  Future<String> _login(Dio dio) async {
-    final response = await dio.post<Map<String, dynamic>>(
-      '/auth/login',
-      data: {'username': username, 'password': password},
-      options: Options(extra: {ApiSession.skipAuth: true}),
-    );
-    final data = response.data!;
-    accessToken = data['accessToken'] as String;
-    role = (data['user'] as Map?)?['role'] as String?;
-    return accessToken!;
-  }
-
-  /// Пометка запроса, которому токен не нужен (сам вход).
-  static const String skipAuth = 'skipAuth';
+  static const Map<String, Role> demoRoles = {
+    'admin': Role.admin,
+    'manager': Role.manager,
+    'viewer': Role.viewer,
+  };
 }

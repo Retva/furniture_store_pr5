@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
-import '../core/breakpoints.dart';
 import '../api/debug_options.dart';
-import '../api/api_session.dart';
+import '../core/breakpoints.dart';
 import '../core/config.dart';
+import '../models/role.dart';
+import '../state/auth_notifier.dart';
 import '../state/debug_settings_notifier.dart';
 
-/// Общий каркас всех экранов: сверху панель с названием раздела, слева
-/// меню разделов. На узком окне (меньше 600 пикселей) меню переезжает вниз.
+/// Общий каркас: шапка с именем пользователя, меню по ролям.
 class AppShell extends StatelessWidget {
   const AppShell({super.key, required this.child});
 
   final Widget child;
 
-  static const List<_Section> _sections = [
+  static const List<_Section> _allSections = [
     _Section('Каталог', '/products', Icons.chair_outlined, Icons.chair),
     _Section(
       'Производители',
@@ -31,32 +31,80 @@ class AppShell extends StatelessWidget {
     ),
     _Section('Материалы', '/materials', Icons.texture_outlined, Icons.texture),
     _Section('Покупатели', '/customers', Icons.people_outline, Icons.people),
+    _Section(
+      'Мои заказы',
+      '/my-orders',
+      Icons.receipt_long_outlined,
+      Icons.receipt_long,
+    ),
+    _Section(
+      'Пользователи',
+      '/admin/users',
+      Icons.manage_accounts_outlined,
+      Icons.manage_accounts,
+    ),
+    _Section(
+      'Статистика',
+      '/admin/stats',
+      Icons.bar_chart_outlined,
+      Icons.bar_chart,
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthNotifier>();
+    final perms = auth.permissions;
+    final sections = [
+      for (final s in _allSections)
+        if (perms.canSeeNav(s.path)) s,
+    ];
+
     final path = GoRouterState.of(context).uri.path;
-    final selected = _sectionIndex(path);
+    final selected = _sectionIndex(path, sections);
     final compact = screenSizeOf(context) == ScreenSize.compact;
 
-    void onSelect(int index) => context.go(_sections[index].path);
+    void onSelect(int index) => context.go(sections[index].path);
 
     final appBar = AppBar(
       title: Text(_titleFor(path)),
-      actions: const [_DebugMenu(), SizedBox(width: 8)],
+      actions: [
+        if (auth.user != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Center(
+              child: Text(
+                '${auth.user!.fullName} · ${auth.user!.role.label}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ),
+          ),
+        IconButton(
+          tooltip: 'Выйти',
+          onPressed: () async {
+            await auth.logout();
+            if (context.mounted) context.go('/login');
+          },
+          icon: const Icon(Icons.logout),
+        ),
+        const _DebugMenu(),
+        const SizedBox(width: 8),
+      ],
     );
+
+    if (sections.isEmpty) {
+      return Scaffold(appBar: appBar, body: child);
+    }
 
     if (compact) {
       return Scaffold(
         appBar: appBar,
         body: child,
-        // На главной ни один раздел не выбран, а NavigationBar требует
-        // выбранный пункт — подсвечиваем первый.
         bottomNavigationBar: NavigationBar(
           selectedIndex: selected ?? 0,
           onDestinationSelected: onSelect,
           destinations: [
-            for (final s in _sections)
+            for (final s in sections)
               NavigationDestination(
                 icon: Icon(s.icon),
                 selectedIcon: Icon(s.selectedIcon),
@@ -77,7 +125,7 @@ class AppShell extends StatelessWidget {
             selectedIndex: selected,
             onDestinationSelected: onSelect,
             destinations: [
-              for (final s in _sections)
+              for (final s in sections)
                 NavigationRailDestination(
                   icon: Icon(s.icon),
                   selectedIcon: Icon(s.selectedIcon),
@@ -92,11 +140,9 @@ class AppShell extends StatelessWidget {
     );
   }
 
-  /// Какой раздел подсветить: `/products/7` относится к каталогу.
-  /// `null` — главная, ни один раздел не выбран.
-  static int? _sectionIndex(String location) {
-    for (var i = 0; i < _sections.length; i++) {
-      final path = _sections[i].path;
+  static int? _sectionIndex(String location, List<_Section> sections) {
+    for (var i = 0; i < sections.length; i++) {
+      final path = sections[i].path;
       if (location == path || location.startsWith('$path/')) return i;
     }
     return null;
@@ -108,9 +154,13 @@ class AppShell extends StatelessWidget {
     '/categories': ('Категории', 'категории'),
     '/materials': ('Материалы', 'материала'),
     '/customers': ('Покупатели', 'покупателя'),
+    '/my-orders': ('Мои заказы', 'заказа'),
+    '/admin/users': ('Пользователи', 'пользователя'),
+    '/admin/stats': ('Статистика', 'статистики'),
   };
 
   static String _titleFor(String path) {
+    if (path == '/forbidden') return 'Отказ в доступе';
     for (final MapEntry(key: base, value: (list, of)) in _titles.entries) {
       if (path == base) return list;
       if (path == '$base/new') return 'Создание $of';
@@ -132,8 +182,6 @@ class _Section {
   final IconData selectedIcon;
 }
 
-/// Меню «Отладка»: медленный ответ, ошибка сервера, смена учётной записи.
-/// Нужно, чтобы показать состояния загрузки и ошибки без правки кода.
 class _DebugMenu extends StatelessWidget {
   const _DebugMenu();
 
@@ -152,13 +200,19 @@ class _DebugMenu extends StatelessWidget {
       onSelected: (value) => switch (value) {
         'slow' => debug.toggleSlow(),
         'fail' => debug.toggleFail(),
-        _ => debug.switchUser(value),
+        _ => null,
       },
       itemBuilder: (context) => [
         if (debug.usesApi) ...[
           const PopupMenuItem<String>(
             enabled: false,
             child: Text('Сервер: ${AppConfig.apiBaseUrl}'),
+          ),
+          PopupMenuItem<String>(
+            enabled: false,
+            child: Text(
+              'Роль: ${context.read<AuthNotifier>().user?.role.label ?? '—'}',
+            ),
           ),
           const PopupMenuDivider(),
           CheckedPopupMenuItem<String>(
@@ -176,11 +230,14 @@ class _DebugMenu extends StatelessWidget {
             ),
           ),
           const PopupMenuDivider(),
-          for (final user in ApiSession.demoAccounts.keys)
-            CheckedPopupMenuItem<String>(
-              value: user,
-              checked: debug.username == user,
-              child: Text('Учётная запись: $user'),
+          const PopupMenuItem<String>(
+            enabled: false,
+            child: Text('Для смены роли войдите под другой учёткой'),
+          ),
+          for (final role in Role.values)
+            PopupMenuItem<String>(
+              enabled: false,
+              child: Text('  ${role.code}: см. экран входа'),
             ),
         ] else
           CheckedPopupMenuItem<String>(

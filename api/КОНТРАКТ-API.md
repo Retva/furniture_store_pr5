@@ -41,9 +41,21 @@
 ## Аутентификация
 
 `POST /api/auth/login` `{ "username", "password" }` → `{ accessToken, refreshToken, expiresIn, user }`.
+`POST /api/auth/register` `{ "username", "password", "fullName" }` → то же; новая роль всегда `viewer`.
 `POST /api/auth/refresh`, `GET /api/auth/me`, `POST /api/auth/logout`.
 
 Изменения требуют заголовка `Authorization: Bearer <accessToken>`.
+
+Роли: `viewer` (покупатель), `manager` (менеджер), `admin` (администратор).
+
+| Метод и адрес | Роль | Назначение |
+| --- | --- | --- |
+| `GET /api/users` | admin | список пользователей |
+| `PUT /api/users/{id}` | admin | смена роли / имени |
+| `GET /api/stats` | admin | сводная статистика |
+| `GET /api/my-orders` | только viewer | личные заказы покупателя |
+
+Запуск с коротким токеном: `node mock-server.js --ttl 60`.
 
 ## Ресурсы
 

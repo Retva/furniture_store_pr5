@@ -1,13 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
-/// Главная: короткое описание и переходы к разделам.
+import '../state/auth_notifier.dart';
+
+/// Главная: короткое описание и переходы к доступным разделам.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final auth = context.watch<AuthNotifier>();
+    final perms = auth.permissions;
+    final user = auth.user;
+
+    final links = <(String, IconData, String)>[
+      if (perms.canBrowseCatalog) ...[
+        ('/products', Icons.chair_outlined, 'Каталог'),
+        ('/manufacturers', Icons.factory_outlined, 'Производители'),
+        ('/categories', Icons.category_outlined, 'Категории'),
+        ('/materials', Icons.texture_outlined, 'Материалы'),
+      ],
+      if (perms.canManageCustomers)
+        ('/customers', Icons.people_outline, 'Покупатели'),
+      if (perms.canViewMyOrders)
+        ('/my-orders', Icons.receipt_long_outlined, 'Мои заказы'),
+      if (perms.canManageUsers)
+        ('/admin/users', Icons.manage_accounts_outlined, 'Пользователи'),
+      if (perms.canViewStats)
+        ('/admin/stats', Icons.bar_chart_outlined, 'Статистика'),
+    ];
 
     return Center(
       child: Padding(
@@ -24,8 +47,10 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Каталог мебели, производители, категории, материалы и покупатели. '
-                'Все изменения сохраняются в браузере и переживают перезагрузку.',
+                user == null
+                    ? 'Войдите, чтобы работать с каталогом.'
+                    : 'Вы вошли как ${user.fullName} (${user.role.label}). '
+                          'Доступные разделы зависят от роли.',
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
@@ -35,13 +60,7 @@ class HomeScreen extends StatelessWidget {
                 runSpacing: 12,
                 alignment: WrapAlignment.center,
                 children: [
-                  for (final (path, icon, label) in const [
-                    ('/products', Icons.chair_outlined, 'Каталог'),
-                    ('/manufacturers', Icons.factory_outlined, 'Производители'),
-                    ('/categories', Icons.category_outlined, 'Категории'),
-                    ('/materials', Icons.texture_outlined, 'Материалы'),
-                    ('/customers', Icons.people_outline, 'Покупатели'),
-                  ])
+                  for (final (path, icon, label) in links)
                     FilledButton.icon(
                       onPressed: () => context.go(path),
                       icon: Icon(icon),

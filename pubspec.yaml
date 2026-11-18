@@ -1,6 +1,6 @@
 name: furniture_store
 publish_to: none
-version: 0.4.0
+version: 0.5.0
 
 environment:
   sdk: ^3.9.0

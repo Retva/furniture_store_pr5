@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api/api_client.dart';
 import 'api/api_session.dart';
+import 'api/auth_api.dart';
 import 'api/debug_options.dart';
 import 'core/config.dart';
 import 'core/router.dart';
@@ -28,23 +32,27 @@ import 'repositories/material_repository.dart';
 import 'repositories/network_simulator.dart';
 import 'repositories/order_repository.dart';
 import 'repositories/product_repository.dart';
-import 'state/manufacturer_list_notifier.dart';
+import 'state/auth_notifier.dart';
 import 'state/debug_settings_notifier.dart';
+import 'state/manufacturer_list_notifier.dart';
 import 'state/other_list_notifiers.dart';
 import 'state/product_list_notifier.dart';
 import 'state/reference_data_notifier.dart';
 import 'state/unsaved_changes_guard.dart';
+import 'widgets/inactivity_watcher.dart';
 
 class FurnitureStoreApp extends StatefulWidget {
   const FurnitureStoreApp({
     super.key,
     required this.store,
     required this.report,
+    required this.prefs,
     this.network,
   });
 
   final KeyValueStore store;
   final StorageReport report;
+  final SharedPreferences prefs;
   final NetworkSimulator? network;
 
   @override
@@ -54,20 +62,24 @@ class FurnitureStoreApp extends StatefulWidget {
 class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
   late final NetworkSimulator _network = widget.network ?? NetworkSimulator();
   final UnsavedChangesGuard _guard = UnsavedChangesGuard();
-  late final GoRouter _router = createRouter(_guard);
   final GlobalKey<ScaffoldMessengerState> _messenger = GlobalKey();
+
+  late final AuthNotifier _auth;
+  late final AuthApi _authApi;
+  late final GoRouter _router;
 
   late final ProductRepository _products;
   late final ManufacturerRepository _manufacturers;
   late final CategoryRepository _categories;
   late final MaterialRepository _materials;
   late final CustomerRepository _customers;
-
-  /// Заказы есть только при работе с сервером.
   OrderRepository? _orders;
 
   late final DebugSettingsNotifier _debug;
   late final ReferenceDataNotifier _refs;
+
+  bool _ready = false;
+  Timer? _sessionTimer;
 
   EntityStore<T> _storeFor<T>(
     String key,
@@ -86,14 +98,34 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
   @override
   void initState() {
     super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
     if (AppConfig.useApi) {
       _initApi();
     } else {
       _initLocal();
     }
 
-    // Сообщения о миграции или сбросе данных показываются один раз после
-    // первого кадра, когда уже есть куда их вывести.
+    _router = createRouter(_guard, _auth);
+    if (AppConfig.useApi) {
+      await _auth.restore();
+    } else {
+      _auth.adoptLocalAdmin();
+    }
+
+    _sessionTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      final ended = await _auth.checkSessionLimits();
+      if (ended && mounted) {
+        _messenger.currentState?.showSnackBar(
+          const SnackBar(
+            content: Text('Сессия завершена: истекло максимальное время.'),
+          ),
+        );
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       for (final message in widget.report.messages) {
         _messenger.currentState?.showSnackBar(
@@ -105,22 +137,27 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
       }
       widget.report.messages.clear();
     });
+
+    if (mounted) setState(() => _ready = true);
   }
 
-  /// Данные с сервера. Один экземпляр Dio на всё приложение; репозитории
-  /// получают его готовым и ничего не знают о настройках.
   void _initApi() {
-    final session = ApiSession(
-      username: AppConfig.apiUser,
-      password: AppConfig.apiPassword,
-    );
     final options = DebugOptions();
+    final bootstrapDio = buildDio(
+      baseUrl: AppConfig.apiBaseUrl,
+      debug: options,
+      log: debugPrint,
+    );
+    _auth = AuthNotifier(widget.prefs, AuthApi(bootstrapDio));
+    final session = ApiSession(_auth);
     final dio = buildDio(
       baseUrl: AppConfig.apiBaseUrl,
       session: session,
       debug: options,
       log: debugPrint,
     );
+    _authApi = AuthApi(dio);
+    _auth.api = _authApi;
 
     final categories = ApiCategoryRepository(dio);
     final manufacturers = ApiManufacturerRepository(dio);
@@ -132,17 +169,14 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
     _customers = ApiCustomerRepository(dio);
     _orders = ApiOrderRepository(dio);
 
-    _debug = DebugSettingsNotifier(options: options, session: session);
+    _debug = DebugSettingsNotifier(options: options);
     _refs = ReferenceDataNotifier(categories, manufacturers, materials);
 
-    // Изменили категорию, материал или производителя — кэш справочников
-    // устарел и будет перечитан при следующем обращении.
     categories.addChangeListener(_refs.markStale);
     manufacturers.addChangeListener(_refs.markStale);
     materials.addChangeListener(_refs.markStale);
   }
 
-  /// Данные в localStorage, как в ПР3: `--dart-define=DATA_SOURCE=local`.
   void _initLocal() {
     final products = LocalProductRepository(
       network: _network,
@@ -153,8 +187,6 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
         (p) => p.toJson(),
       ),
     );
-    // Удалить производителя, категорию или материал нельзя, пока на них
-    // ссылаются товары: репозиторий спрашивает число ссылок у товаров.
     _manufacturers = LocalManufacturerRepository(
       network: _network,
       usageCount: products.countByManufacturer,
@@ -196,8 +228,11 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
     );
     _products = products;
 
+    final localDio = buildDio(baseUrl: AppConfig.apiBaseUrl);
+    _authApi = AuthApi(localDio);
+    _auth = AuthNotifier(widget.prefs, _authApi);
+
     _debug = DebugSettingsNotifier(simulator: _network);
-    // Локальные данные читаются мгновенно, кэш не нужен.
     _refs = ReferenceDataNotifier(
       _categories,
       _manufacturers,
@@ -208,16 +243,53 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
 
   @override
   void dispose() {
+    _sessionTimer?.cancel();
     _refs.dispose();
     _debug.dispose();
-    _router.dispose();
+    if (_ready) _router.dispose();
+    _auth.dispose();
     super.dispose();
+  }
+
+  Future<void> _onInactivityTimeout() async {
+    await _auth.logout();
+    _messenger.currentState?.clearSnackBars();
+    _messenger.currentState?.showSnackBar(
+      const SnackBar(
+        content: Text('Сессия завершена из‑за неактивности.'),
+        duration: Duration(seconds: 5),
+      ),
+    );
+  }
+
+  void _onInactivityWarning() {
+    _messenger.currentState?.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Выход через 30 секунд из‑за отсутствия действий. '
+          'Двигайте мышь или нажмите клавишу, чтобы остаться.',
+        ),
+        duration: Duration(seconds: 30),
+      ),
+    );
+  }
+
+  void _onInactivityWarningCancel() {
+    _messenger.currentState?.hideCurrentSnackBar();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready) {
+      return const MaterialApp(
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
+
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<AuthNotifier>.value(value: _auth),
+        Provider<AuthApi>.value(value: _authApi),
         Provider<ProductRepository>.value(value: _products),
         Provider<ManufacturerRepository>.value(value: _manufacturers),
         Provider<CategoryRepository>.value(value: _categories),
@@ -237,20 +309,36 @@ class _FurnitureStoreAppState extends State<FurnitureStoreApp> {
         ChangeNotifierProvider.value(value: _refs..load()),
         ChangeNotifierProvider.value(value: _debug),
       ],
-      child: MaterialApp.router(
-        title: 'МебельДом',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(useMaterial3: true),
-        routerConfig: _router,
-        scaffoldMessengerKey: _messenger,
-        scrollBehavior: const AppScrollBehavior(),
-        locale: const Locale('ru'),
-        supportedLocales: const [Locale('ru')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
+      child: Consumer<AuthNotifier>(
+        builder: (context, auth, child) {
+          return InactivityWatcher(
+            enabled: AppConfig.useApi && auth.isAuthenticated,
+            timeout: AuthNotifier.inactivityTimeout,
+            warningBefore: AuthNotifier.inactivityWarning,
+            onTimeout: _onInactivityTimeout,
+            onWarning: _onInactivityWarning,
+            onWarningCancel: _onInactivityWarningCancel,
+            onActivity: () {
+              auth.touchActivity();
+            },
+            child: child!,
+          );
+        },
+        child: MaterialApp.router(
+          title: 'МебельДом',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(useMaterial3: true),
+          routerConfig: _router,
+          scaffoldMessengerKey: _messenger,
+          scrollBehavior: const AppScrollBehavior(),
+          locale: const Locale('ru'),
+          supportedLocales: const [Locale('ru')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+        ),
       ),
     );
   }

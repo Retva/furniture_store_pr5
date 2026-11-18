@@ -60,8 +60,9 @@ class DebugParamsInterceptor extends Interceptor {
   }
 }
 
-/// Подставляет токен в заголовок `Authorization`. Для изменяющих запросов
-/// сначала выполняет вход, если токена ещё нет. При ответе 401 один раз входит заново и повторяет запрос.
+/// Подставляет токен в заголовок `Authorization`.
+/// При 401 обновляет токен через refresh и один раз повторяет запрос.
+/// Запросы `/auth/` не трогает — иначе неверный пароль завёл бы цикл.
 class AuthInterceptor extends Interceptor {
   AuthInterceptor(this.session, this.dio);
 
@@ -71,23 +72,21 @@ class AuthInterceptor extends Interceptor {
   static const _retried = 'authRetried';
 
   bool _skip(RequestOptions o) => o.extra[ApiSession.skipAuth] == true;
+  bool _isAuthPath(RequestOptions o) =>
+      o.path.contains('/auth/') || o.uri.path.contains('/auth/');
 
   @override
-  Future<void> onRequest(
+  void onRequest(
     RequestOptions options,
     RequestInterceptorHandler handler,
-  ) async {
-    if (_skip(options)) return handler.next(options);
-    try {
-      var token = session.accessToken;
-      if (token == null && options.method != 'GET') {
-        token = await session.login(dio);
+  ) {
+    if (!_skip(options)) {
+      final token = session.accessToken;
+      if (token != null) {
+        options.headers['Authorization'] = 'Bearer $token';
       }
-      if (token != null) options.headers['Authorization'] = 'Bearer $token';
-      handler.next(options);
-    } on DioException catch (e) {
-      handler.reject(e);
     }
+    handler.next(options);
   }
 
   @override
@@ -97,17 +96,22 @@ class AuthInterceptor extends Interceptor {
   ) async {
     final request = err.requestOptions;
     final unauthorized = err.response?.statusCode == 401;
-    if (!unauthorized || _skip(request) || request.extra[_retried] == true) {
+    if (!unauthorized ||
+        _skip(request) ||
+        _isAuthPath(request) ||
+        request.extra[_retried] == true) {
       return handler.next(err);
     }
     try {
-      session.accessToken = null;
-      final token = await session.login(dio);
+      await session.auth.refreshTokens();
+      final token = session.accessToken;
+      if (token == null) return handler.next(err);
       request.headers['Authorization'] = 'Bearer $token';
       request.extra[_retried] = true;
       handler.resolve(await dio.fetch<dynamic>(request));
-    } on DioException catch (e) {
-      handler.next(e);
+    } catch (_) {
+      await session.auth.logout(); // без зацикливания
+      handler.next(err);
     }
   }
 }

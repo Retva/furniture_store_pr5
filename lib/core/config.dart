@@ -13,16 +13,4 @@ class AppConfig {
   );
 
   static bool get useApi => dataSource != 'local';
-
-  /// Служебная учётная запись, под которой приложение выполняет запросы
-  /// на изменение данных. Экран входа появится в следующей работе.
-  static const String apiUser = String.fromEnvironment(
-    'API_USER',
-    defaultValue: 'admin',
-  );
-
-  static const String apiPassword = String.fromEnvironment(
-    'API_PASSWORD',
-    defaultValue: 'admin123',
-  );
 }

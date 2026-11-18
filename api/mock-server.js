@@ -592,6 +592,27 @@ async function handle(req, res, url) {
     }
     return send(res, 200, issueTokens(found));
   }
+  if (path === '/api/auth/register' && method === 'POST') {
+    const body = await readBody(req);
+    if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '');
+    const fullName = String(body.fullName || '').trim();
+    const errors = {};
+    if (username.length < 3) errors.username = 'Логин не короче 3 символов';
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) errors.username = 'Только латинские буквы, цифры и _';
+    if (db.users.some((u) => u.username === username && !u.deletedAt)) {
+      errors.username = 'Такой логин уже занят';
+    }
+    if (password.length < 8) errors.password = 'Пароль не короче 8 символов';
+    else if (!/\d/.test(password)) errors.password = 'В пароле нужна хотя бы одна цифра';
+    else if (!/[^A-Za-z0-9]/.test(password)) errors.password = 'В пароле нужен специальный символ';
+    if (fullName.length < 2) errors.fullName = 'Укажите имя';
+    if (Object.keys(errors).length) return invalid(res, errors);
+    pushUser(username, password, fullName, 'viewer');
+    const created = db.users[db.users.length - 1];
+    return send(res, 201, issueTokens(created));
+  }
   if (path === '/api/auth/refresh' && method === 'POST') {
     const body = await readBody(req);
     const token = body && body.refreshToken;
@@ -612,6 +633,62 @@ async function handle(req, res, url) {
     const body = await readBody(req);
     if (body && body.refreshToken) db.refreshTokens.delete(body.refreshToken);
     return send(res, 204);
+  }
+
+  // ── пользователи (только admin) ──
+  if (path === '/api/users' && method === 'GET') {
+    if (!requireRole(res, user, 'admin')) return;
+    const items = db.users.filter((u) => !u.deletedAt).map(expandUser);
+    return send(res, 200, { items, page: 1, size: items.length, total: items.length, totalPages: 1 });
+  }
+  const usersMatch = path.match(/^\/api\/users\/(\d+)$/);
+  if (usersMatch && method === 'PUT') {
+    if (!requireRole(res, user, 'admin')) return;
+    const target = db.users.find((u) => u.id === Number(usersMatch[1]) && !u.deletedAt);
+    if (!target) return fail(res, 404, 'Пользователь не найден');
+    const body = await readBody(req);
+    if (!body) return fail(res, 400, 'Тело запроса не является корректным JSON');
+    const role = String(body.role || '');
+    if (!['viewer', 'manager', 'admin'].includes(role)) {
+      return invalid(res, { role: 'Роль: viewer, manager или admin' });
+    }
+    if (target.id === user.id && role !== 'admin') {
+      return fail(res, 409, 'Нельзя снять с себя роль администратора');
+    }
+    target.role = role;
+    if (typeof body.fullName === 'string' && body.fullName.trim()) {
+      target.fullName = body.fullName.trim();
+    }
+    return send(res, 200, expandUser(target));
+  }
+
+  // ── статистика (только admin) ──
+  if (path === '/api/stats' && method === 'GET') {
+    if (!requireRole(res, user, 'admin')) return;
+    const alive = (name) => db[name].filter((x) => !x.deletedAt).length;
+    const openOrders = db.orders.filter((o) => !o.cancelledAt).length;
+    return send(res, 200, {
+      products: alive('products'),
+      manufacturers: alive('manufacturers'),
+      categories: alive('categories'),
+      materials: alive('materials'),
+      customers: alive('customers'),
+      orders: openOrders,
+      users: db.users.filter((u) => !u.deletedAt).length,
+    });
+  }
+
+  // ── «мои заказы» для роли viewer: демо-выборка по первому покупателю ──
+  if (path === '/api/my-orders' && method === 'GET') {
+    if (!requireRole(res, user, 'viewer')) return;
+    if (user.role !== 'viewer') {
+      return fail(res, 403, 'Раздел «Мои заказы» доступен только покупателям');
+    }
+    const customer = db.customers.find((c) => !c.deletedAt);
+    const items = customer
+      ? db.orders.filter((o) => o.customerId === customer.id).map(expandOrder)
+      : [];
+    return send(res, 200, { items, page: 1, size: items.length, total: items.length, totalPages: 1 });
   }
 
   // ── заказы: оформление и отмена ──

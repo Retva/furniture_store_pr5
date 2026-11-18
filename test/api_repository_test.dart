@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:furniture_store/api/api_client.dart';
 import 'package:furniture_store/api/api_exception.dart';
 import 'package:furniture_store/api/api_session.dart';
+import 'package:furniture_store/api/auth_api.dart';
 import 'package:furniture_store/api/debug_options.dart';
 import 'package:furniture_store/models/basic_query.dart';
 import 'package:furniture_store/models/product.dart';
@@ -13,6 +14,8 @@ import 'package:furniture_store/models/product_query.dart';
 import 'package:furniture_store/repositories/api/api_repositories.dart';
 import 'package:furniture_store/repositories/order_repository.dart';
 import 'package:furniture_store/repositories/repository_exception.dart';
+import 'package:furniture_store/state/auth_notifier.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Поддельный транспорт Dio: вместо сети вызывает [handler] и запоминает
 /// все запросы. Так репозитории проверяются целиком — с перехватчиками,
@@ -115,24 +118,35 @@ const sofa = Product(
 
 void main() {
   late FakeAdapter adapter;
+  late AuthNotifier auth;
   late ApiSession session;
   late DebugOptions debug;
   late Dio dio;
   late ApiProductRepository products;
 
-  setUp(() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
     adapter = FakeAdapter((o) async => json(200, page([])));
-    session = ApiSession(username: 'manager', password: 'manager123');
     debug = DebugOptions();
+    // AuthApi и Dio связываются после создания сессии.
+    final bootstrap = buildDio(
+      baseUrl: 'http://test/api',
+      adapter: adapter,
+      log: (_) {},
+      retry: const RetryPolicy.none(),
+    );
+    auth = AuthNotifier(prefs, AuthApi(bootstrap));
+    session = ApiSession(auth);
     dio = buildDio(
       baseUrl: 'http://test/api',
       session: session,
       debug: debug,
       adapter: adapter,
       log: (_) {},
-      // Паузы между повторами в тестах не нужны.
       retry: const RetryPolicy(maxRetries: 3, baseDelay: Duration.zero),
     );
+    auth.api = AuthApi(dio);
     products = ApiProductRepository(dio);
   });
 
@@ -216,12 +230,8 @@ void main() {
     test(
       'на сервер уходят идентификаторы связей, без id и deletedAt',
       () async {
-        adapter.handler = (o) async => o.path == '/auth/login'
-            ? json(200, {
-                'accessToken': 'token-1',
-                'user': {'role': 'manager'},
-              })
-            : json(201, productJson(42));
+        auth.adoptTokensForTest(accessToken: 'token-1');
+        adapter.handler = (o) async => json(201, productJson(42));
 
         final created = await products.create(sofa);
 
@@ -238,7 +248,7 @@ void main() {
     );
 
     test('422 — ошибки привязаны к полям формы', () async {
-      session.accessToken = 'token-1';
+      auth.adoptTokensForTest(accessToken: 'token-1');
       adapter.handler = (o) async => json(422, {
         'message': 'Ошибка валидации',
         'errors': {'sku': 'Артикул DV-1001 уже есть у другого товара'},
@@ -256,7 +266,7 @@ void main() {
     });
 
     test('409 — текст сервера доходит до пользователя', () async {
-      session.accessToken = 'token-1';
+      auth.adoptTokensForTest(accessToken: 'token-1');
       final manufacturers = ApiManufacturerRepository(dio);
       adapter.handler = (o) async => json(409, {
         'message':
@@ -273,7 +283,7 @@ void main() {
     });
 
     test('409 при заказе больше, чем есть на складе', () async {
-      session.accessToken = 'token-1';
+      auth.adoptTokensForTest(accessToken: 'token-1');
       final orders = ApiOrderRepository(dio);
       adapter.handler = (o) async => json(409, {
         'message': 'На складе только 3 шт. товара «Диван «Осло»»',
@@ -288,16 +298,26 @@ void main() {
     });
 
     test(
-      'истёкший токен: вход выполняется заново и запрос повторяется',
+      'истёкший токен: обновляется через refresh и запрос повторяется',
       () async {
-        session.accessToken = 'old';
-        var logins = 0;
+        auth.adoptTokensForTest(
+          accessToken: 'old',
+          refreshToken: 'refresh-1',
+        );
+        var refreshes = 0;
         adapter.handler = (o) async {
-          if (o.path == '/auth/login') {
-            logins++;
+          if (o.path == '/auth/refresh') {
+            refreshes++;
             return json(200, {
               'accessToken': 'fresh',
-              'user': {'role': 'manager'},
+              'refreshToken': 'refresh-2',
+              'expiresIn': 900,
+              'user': {
+                'id': 1,
+                'username': 'manager',
+                'fullName': 'Менеджер',
+                'role': 'manager',
+              },
             });
           }
           return o.headers['Authorization'] == 'Bearer fresh'
@@ -307,13 +327,13 @@ void main() {
 
         await products.softDelete(7);
 
-        expect(logins, 1);
-        expect(adapter.requests.length, 3); // DELETE → вход → DELETE
+        expect(refreshes, 1);
+        expect(adapter.requests.length, 3); // DELETE → refresh → DELETE
       },
     );
 
     test('403 — недостаточно прав', () async {
-      session.accessToken = 'viewer-token';
+      auth.adoptTokensForTest(accessToken: 'viewer-token');
       adapter.handler = (o) async =>
           json(403, {'message': 'Операция доступна начиная с роли «manager»'});
 
@@ -337,7 +357,7 @@ void main() {
     );
 
     test('POST при сбое сети не повторяется', () async {
-      session.accessToken = 'token-1';
+      auth.adoptTokensForTest(accessToken: 'token-1');
       adapter.handler = offline;
 
       final error = await errorOf(() => products.create(sofa));

@@ -13,5 +13,5 @@ Future<void> main() async {
   final store = PrefsKeyValueStore(prefs);
   final report = StorageReport();
   await StorageMigrator(store, report).run();
-  runApp(FurnitureStoreApp(store: store, report: report));
+  runApp(FurnitureStoreApp(store: store, report: report, prefs: prefs));
 }

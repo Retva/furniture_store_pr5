@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
-
 import '../models/basic_query.dart';
 import '../models/customer.dart';
 import '../models/entity.dart';
@@ -19,24 +18,29 @@ import '../repositories/material_repository.dart';
 import '../repositories/product_repository.dart';
 import '../screens/category_screens.dart';
 import '../screens/customer_screens.dart';
+import '../screens/forbidden_screen.dart';
 import '../screens/home_screen.dart';
+import '../screens/login_screen.dart';
 import '../screens/manufacturer_detail_screen.dart';
 import '../screens/manufacturer_form_screen.dart';
 import '../screens/manufacturer_list_screen.dart';
 import '../screens/material_screens.dart';
+import '../screens/my_orders_screen.dart';
 import '../screens/not_found_screen.dart';
 import '../screens/product_detail_screen.dart';
 import '../screens/product_form_screen.dart';
 import '../screens/product_list_screen.dart';
+import '../screens/register_screen.dart';
+import '../screens/stats_screen.dart';
+import '../screens/users_screen.dart';
+import '../state/auth_notifier.dart';
 import '../state/entity_detail_notifier.dart';
 import '../state/entity_form_controller.dart';
 import '../state/unsaved_changes_guard.dart';
 import '../widgets/app_shell.dart';
 import '../widgets/entity_form_page.dart';
 
-GoRouter createRouter(UnsavedChangesGuard guard) {
-  /// Уход с формы, на которой есть несохранённые изменения, — по меню,
-  /// ссылке или кнопке «назад» браузера — сначала спрашивает подтверждение.
+GoRouter createRouter(UnsavedChangesGuard guard, AuthNotifier auth) {
   Future<bool> confirmExit(BuildContext context, GoRouterState state) async {
     if (!guard.dirty) return true;
     final leave = await confirmDiscardChanges(context);
@@ -44,8 +48,6 @@ GoRouter createRouter(UnsavedChangesGuard guard) {
     return leave;
   }
 
-  /// Четыре маршрута одной сущности: список, создание, карточка, изменение.
-  /// Создание и изменение — один и тот же экран формы.
   List<RouteBase> entityRoutes<T extends Entity>({
     required String path,
     required Widget Function(GoRouterState state) list,
@@ -67,6 +69,8 @@ GoRouter createRouter(UnsavedChangesGuard guard) {
       GoRoute(
         path: '$path/new',
         onExit: confirmExit,
+        redirect: (context, state) =>
+            auth.permissions.redirectFor(state.matchedLocation),
         builder: (context, state) => withForm(context, null),
       ),
       GoRoute(
@@ -84,6 +88,8 @@ GoRouter createRouter(UnsavedChangesGuard guard) {
       GoRoute(
         path: '$path/:id/edit',
         onExit: confirmExit,
+        redirect: (context, state) =>
+            auth.permissions.redirectFor(state.matchedLocation),
         builder: (context, state) {
           final id = idOf(state);
           if (id == null) return NotFoundScreen(location: state.uri.toString());
@@ -95,13 +101,66 @@ GoRouter createRouter(UnsavedChangesGuard guard) {
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: auth,
     errorBuilder: (context, state) =>
         NotFoundScreen(location: state.uri.toString()),
+    redirect: (context, state) {
+      if (auth.isRestoring) return null;
+
+      final loggedIn = auth.isAuthenticated;
+      final target = state.matchedLocation;
+      final isPublic = target == '/login' || target == '/register';
+
+      if (!loggedIn && !isPublic) {
+        return '/login?from=${Uri.encodeComponent(state.uri.toString())}';
+      }
+      if (loggedIn && isPublic) return '/';
+
+      if (loggedIn && !isPublic) {
+        final denied = auth.permissions.redirectFor(target);
+        if (denied == '/forbidden' && target != '/forbidden') {
+          return '/forbidden';
+        }
+      }
+      return null;
+    },
     routes: [
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => LoginScreen(
+          from: state.uri.queryParameters['from'],
+        ),
+      ),
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
       ShellRoute(
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+          GoRoute(
+            path: '/forbidden',
+            builder: (context, state) => const ForbiddenScreen(),
+          ),
+          GoRoute(
+            path: '/my-orders',
+            redirect: (context, state) =>
+                auth.permissions.redirectFor('/my-orders'),
+            builder: (context, state) => const MyOrdersScreen(),
+          ),
+          GoRoute(
+            path: '/admin/users',
+            redirect: (context, state) =>
+                auth.permissions.redirectFor('/admin/users'),
+            builder: (context, state) => const UsersScreen(),
+          ),
+          GoRoute(
+            path: '/admin/stats',
+            redirect: (context, state) =>
+                auth.permissions.redirectFor('/admin/stats'),
+            builder: (context, state) => const StatsScreen(),
+          ),
           ...entityRoutes<Product>(
             path: '/products',
             list: (s) => ProductListScreen(

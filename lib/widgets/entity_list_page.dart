@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../core/breakpoints.dart';
 import '../models/entity.dart';
 import '../models/list_query.dart';
+import '../state/auth_notifier.dart';
 import '../state/entity_list_notifier.dart';
 import '../state/reference_data_notifier.dart';
 import 'dialogs.dart';
@@ -149,46 +150,61 @@ class _EntityListPageState<
     if (ok) await refs.load();
   }
 
-  List<Widget> _actions(T item) => recordActions(
-    isDeleted: item.isDeleted,
-    onEdit: () => _edit(item),
-    onSoftDelete: () => _softDelete(item),
-    onRestore: () => _restore(item),
-    onHardDelete: () => _hardDelete(item),
-    busy: _notifier.isBusy(item.id),
-  );
+  List<Widget> _actions(T item, AuthNotifier auth) {
+    final p = auth.permissions;
+    return recordActions(
+      isDeleted: item.isDeleted,
+      onEdit: () => _edit(item),
+      onSoftDelete: () => _softDelete(item),
+      onRestore: () => _restore(item),
+      onHardDelete: () => _hardDelete(item),
+      busy: _notifier.isBusy(item.id),
+      canEdit: p.canManageCatalog,
+      canSoftDelete: p.canManageCatalog,
+      canRestore: p.canRestore,
+      canHardDelete: p.canHardDelete,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final notifier = context.watch<N>();
+    final auth = context.watch<AuthNotifier>();
     context.watch<ReferenceDataNotifier>();
     final query = widget.query;
     final compact = screenSizeOf(context) == ScreenSize.compact;
+    final canManage = auth.permissions.canManageCatalog;
 
-    final createButton = FilledButton.icon(
-      onPressed: () => context.go('${widget.basePath}/new'),
-      icon: const Icon(Icons.add),
-      label: Text(widget.createLabel),
-    );
+    final createButton = canManage
+        ? FilledButton.icon(
+            onPressed: () => context.go('${widget.basePath}/new'),
+            icon: const Icon(Icons.add),
+            label: Text(widget.createLabel),
+          )
+        : null;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         if (compact) ...[
-          Align(alignment: Alignment.centerLeft, child: createButton),
-          const SizedBox(height: 12),
+          if (createButton != null) ...[
+            Align(alignment: Alignment.centerLeft, child: createButton),
+            const SizedBox(height: 12),
+          ],
           widget.filters(query, _go, compact),
         ] else
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: widget.filters(query, _go, compact)),
-              const SizedBox(width: 12),
-              createButton,
+              if (createButton != null) ...[
+                const SizedBox(width: 12),
+                createButton,
+              ],
             ],
           ),
         const SizedBox(height: 12),
-        if (notifier.hasSelection) ...[
+        if (canManage && notifier.hasSelection) ...[
           SelectionBar(
             count: notifier.selected.length,
             onClear: notifier.clearSelection,
@@ -204,19 +220,20 @@ class _EntityListPageState<
           onResetFilters: () => _go(query.cleared()),
           onGoToPage: (page) => _go(query.withPage(page)),
           emptyTitle: widget.emptyTitle,
-          emptyMessage:
-              'Нажмите «${widget.createLabel}», чтобы добавить '
-              'первую запись.',
+          emptyMessage: canManage
+              ? 'Нажмите «${widget.createLabel}», чтобы добавить '
+                    'первую запись.'
+              : 'Записей нет.',
           builder: (result) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (compact)
                 EntityCardList<T>(
                   items: result.items,
-                  selected: notifier.selected,
-                  onToggleSelect: notifier.toggleSelection,
+                  selected: canManage ? notifier.selected : <int>{},
+                  onToggleSelect: canManage ? notifier.toggleSelection : (_) {},
                   onOpen: _open,
-                  actions: _actions,
+                  actions: (item) => _actions(item, auth),
                   title: widget.nameOf,
                   subtitle: widget.cardSubtitle,
                   details: widget.cardDetails,
@@ -224,13 +241,15 @@ class _EntityListPageState<
               else
                 EntityTable<T>(
                   items: result.items,
-                  selected: notifier.selected,
-                  onToggleSelect: notifier.toggleSelection,
-                  onSelectAll: notifier.setSelection,
+                  selected: canManage ? notifier.selected : <int>{},
+                  onToggleSelect: canManage ? notifier.toggleSelection : (_) {},
+                  onSelectAll: canManage
+                      ? notifier.setSelection
+                      : (ids, selected) {},
                   sortField: query.sortField,
                   sortAscending: query.sortAscending,
                   onSort: (field) => _go(query.withSort(field)),
-                  actions: _actions,
+                  actions: (item) => _actions(item, auth),
                   columns: widget.columns(_open),
                 ),
               const SizedBox(height: 12),
