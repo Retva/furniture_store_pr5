@@ -18,8 +18,8 @@ class ProductFormScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final refs = context.watch<ReferenceDataNotifier>();
 
-    Map<int, String> materialsOf(int? manufacturerId) {
-      final allowed = refs.manufacturerOf(manufacturerId ?? -1)?.materialIds;
+    Map<String, String> materialsOf(String? manufacturerId) {
+      final allowed = refs.manufacturerOf(manufacturerId ?? '')?.materialIds;
       if (allowed == null) return const {};
       return {
         for (final m in refs.activeMaterials)
@@ -35,8 +35,8 @@ class ProductFormScreen extends StatelessWidget {
         'name': p?.name ?? '',
         'sku': p?.sku ?? '',
         'manufacturerId': p?.manufacturerId,
-        'categoryIds': p?.categoryIds ?? <int>[],
-        'materialIds': p?.materialIds ?? <int>[],
+        'categoryIds': p?.categoryIds ?? <String>[],
+        'materialIds': p?.materialIds ?? <String>[],
         'price': p?.price.toString() ?? '',
         'stock': p?.stock.toString() ?? '0',
         'widthCm': p?.widthCm.toString() ?? '',
@@ -63,24 +63,24 @@ class ProductFormScreen extends StatelessWidget {
             ),
           ]),
         ),
-        DropdownFieldSpec<int>(
+        DropdownFieldSpec<String>(
           name: 'manufacturerId',
           label: 'Производитель',
           requiredMessage: 'Выберите производителя',
           options: {
             for (final m in refs.activeManufacturers) m.id: m.name,
-            if (values['manufacturerId'] is int &&
+            if (values['manufacturerId'] is String &&
                 refs
-                        .manufacturerOf(values['manufacturerId'] as int)
+                        .manufacturerOf(values['manufacturerId'] as String)
                         ?.isDeleted ==
                     true)
-              values['manufacturerId'] as int:
-                  '${refs.manufacturerName(values['manufacturerId'] as int)} (удалён)',
+              values['manufacturerId'] as String:
+                  '${refs.manufacturerName(values['manufacturerId'] as String)} (удалён)',
           },
           onSelected: (scope, id) {
             final allowed = materialsOf(id);
             final current =
-                scope.values['materialIds'] as List<int>? ?? const <int>[];
+                scope.values['materialIds'] as List<String>? ?? const <String>[];
             scope.set(
               'materialIds',
               current.where(allowed.containsKey).toList(),
@@ -98,7 +98,7 @@ class ProductFormScreen extends StatelessWidget {
           label: 'Материалы (только те, с которыми работает производитель)',
           minCount: 1,
           emptyText: 'Сначала выберите производителя',
-          options: materialsOf(values['manufacturerId'] as int?),
+          options: materialsOf(values['manufacturerId'] as String?),
         ),
         RowSpec([
           TextFieldSpec(
@@ -140,12 +140,12 @@ class ProductFormScreen extends StatelessWidget {
         ),
       ],
       build: (v, original) => Product(
-        id: original?.id ?? 0,
+        id: original?.id ?? '',
         name: (v['name'] as String).trim(),
         sku: (v['sku'] as String).trim().toUpperCase(),
-        manufacturerId: v['manufacturerId'] as int,
-        categoryIds: List<int>.of(v['categoryIds'] as List<int>),
-        materialIds: List<int>.of(v['materialIds'] as List<int>),
+        manufacturerId: v['manufacturerId'] as String,
+        categoryIds: List<String>.of(v['categoryIds'] as List<String>),
+        materialIds: List<String>.of(v['materialIds'] as List<String>),
         price: int.parse(v['price'] as String),
         stock: int.parse(v['stock'] as String),
         widthCm: int.parse(v['widthCm'] as String),

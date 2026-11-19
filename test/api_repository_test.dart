@@ -17,9 +17,6 @@ import 'package:furniture_store/repositories/repository_exception.dart';
 import 'package:furniture_store/state/auth_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Поддельный транспорт Dio: вместо сети вызывает [handler] и запоминает
-/// все запросы. Так репозитории проверяются целиком — с перехватчиками,
-/// повторами и переводом ошибок, — но без сервера.
 class FakeAdapter implements HttpClientAdapter {
   FakeAdapter(this.handler);
 
@@ -34,7 +31,6 @@ class FakeAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (cancelFuture != null) {
-      // Отмена прерывает «сетевой» запрос так же, как настоящий адаптер.
       return Future.any([
         handler(options),
         cancelFuture.then<ResponseBody>(
@@ -60,7 +56,6 @@ ResponseBody json(int status, Object? body) => ResponseBody.fromString(
   },
 );
 
-/// Запрос, на который «сервер» не ответил: выключен или недоступен.
 Never offline(RequestOptions options) => throw DioException.connectionError(
   requestOptions: options,
   reason: 'Connection refused',
@@ -75,39 +70,33 @@ Future<Object?> errorOf(Future<Object?> Function() action) async {
   return null;
 }
 
-/// Товар так, как его присылает сервер: связи развёрнуты в объекты.
-Map<String, dynamic> productJson(int id, {String sku = 'DV-1001'}) => {
+Map<String, dynamic> productJson(String id, {String sku = 'DV-1001'}) => {
   'id': id,
   'name': 'Диван «Осло»',
   'sku': sku,
-  'manufacturer': {'id': 2, 'name': 'Северный лес'},
-  'categories': [
-    {'id': 1, 'name': 'Диваны'},
-  ],
-  'materials': [
-    {'id': 4, 'name': 'Массив бука'},
-    {'id': 9, 'name': 'Велюр'},
-  ],
+  'manufacturer': '2',
+  'categories': ['1'],
+  'materials': ['4', '9'],
   'price': 54990,
   'stock': 3,
-  'widthCm': 210,
-  'depthCm': 95,
-  'heightCm': 85,
+  'width_cm': 210,
+  'depth_cm': 95,
+  'height_cm': 85,
   'color': 'серый',
   'description': '',
-  'deletedAt': null,
+  'deleted_at': '',
 };
 
 Map<String, dynamic> page(List<Object> items, {int total = 1, int size = 10}) =>
-    {'items': items, 'page': 1, 'size': size, 'total': total, 'totalPages': 1};
+    {'items': items, 'page': 1, 'perPage': size, 'totalItems': total, 'totalPages': 1};
 
 const sofa = Product(
-  id: 0,
+  id: '',
   name: 'Диван «Осло»',
   sku: 'DV-1001',
-  manufacturerId: 2,
-  categoryIds: [1],
-  materialIds: [4, 9],
+  manufacturerId: '2',
+  categoryIds: ['1'],
+  materialIds: ['4', '9'],
   price: 54990,
   stock: 3,
   widthCm: 210,
@@ -129,9 +118,8 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     adapter = FakeAdapter((o) async => json(200, page([])));
     debug = DebugOptions();
-    // AuthApi и Dio связываются после создания сессии.
     final bootstrap = buildDio(
-      baseUrl: 'http://test/api',
+      baseUrl: 'http://test',
       adapter: adapter,
       log: (_) {},
       retry: const RetryPolicy.none(),
@@ -139,7 +127,7 @@ void main() {
     auth = AuthNotifier(prefs, AuthApi(bootstrap));
     session = ApiSession(auth);
     dio = buildDio(
-      baseUrl: 'http://test/api',
+      baseUrl: 'http://test',
       session: session,
       debug: debug,
       adapter: adapter,
@@ -153,12 +141,12 @@ void main() {
   group('Чтение', () {
     test('поиск, фильтр, сортировка и страница уходят на сервер', () async {
       adapter.handler = (o) async =>
-          json(200, page([productJson(7)], total: 31));
+          json(200, page([productJson('7')], total: 31));
 
       final result = await products.find(
         const ProductQuery(
           search: 'диван',
-          categoryId: 1,
+          categoryId: '1',
           sortField: 'price',
           sortAscending: false,
           page: 2,
@@ -168,49 +156,51 @@ void main() {
 
       final sent = adapter.requests.single;
       expect(sent.method, 'GET');
-      expect(sent.uri.path, '/api/products');
-      expect(sent.uri.queryParameters, {
-        'search': 'диван',
-        'categoryId': '1',
-        'sort': 'price,desc',
-        'page': '2',
-        'size': '25',
-      });
+      expect(sent.uri.path, '/api/collections/products/records');
+      expect(sent.uri.queryParameters['page'], '2');
+      expect(sent.uri.queryParameters['perPage'], '25');
+      expect(sent.uri.queryParameters['sort'], '-price');
+      final filter = sent.uri.queryParameters['filter']!;
+      expect(filter, contains('deleted_at = ""'));
+      expect(filter, contains('диван'));
+      expect(filter, contains('categories ?~ "1"'));
       expect(result.total, 31);
-      expect(result.items.single.id, 7);
+      expect(result.items.single.id, '7');
     });
 
     test('развёрнутые связи из ответа превращаются в идентификаторы', () async {
-      adapter.handler = (o) async => json(200, productJson(7));
+      adapter.handler = (o) async => json(200, productJson('7'));
 
-      final product = await products.findById(7);
+      final product = await products.findById('7');
 
-      expect(product!.manufacturerId, 2);
-      expect(product.categoryIds, [1]);
-      expect(product.materialIds, [4, 9]);
+      expect(product!.manufacturerId, '2');
+      expect(product.categoryIds, ['1']);
+      expect(product.materialIds, ['4', '9']);
     });
 
     test('404 при чтении записи — это null, а не ошибка', () async {
       adapter.handler = (o) async => json(404, {'message': 'Объект не найден'});
 
-      expect(await products.findById(999), isNull);
+      expect(await products.findById('999'), isNull);
     });
 
     test('новый поиск отменяет незавершённый предыдущий', () async {
-      // Первый запрос «висит» секунду, второй отвечает сразу.
       adapter.handler = (o) async {
-        final search = o.queryParameters['search'];
-        if (search == null) {
+        final filter = o.queryParameters['filter'] as String?;
+        if (filter == null || !filter.contains('шкаф')) {
           await Future<void>.delayed(const Duration(seconds: 1));
         }
-        return json(200, page([productJson(search == null ? 1 : 2)]));
+        return json(
+          200,
+          page([productJson(filter != null && filter.contains('шкаф') ? '2' : '1')]),
+        );
       };
 
       final first = errorOf(() => products.find(const ProductQuery()));
       final second = await products.find(const ProductQuery(search: 'шкаф'));
 
       expect(await first, isA<CancelledException>());
-      expect(second.items.single.id, 2);
+      expect(second.items.single.id, '2');
     });
 
     test('служебные параметры __delay и __fail добавляются из меню', () async {
@@ -231,33 +221,33 @@ void main() {
       'на сервер уходят идентификаторы связей, без id и deletedAt',
       () async {
         auth.adoptTokensForTest(accessToken: 'token-1');
-        adapter.handler = (o) async => json(201, productJson(42));
+        adapter.handler = (o) async => json(200, productJson('42'));
 
         final created = await products.create(sofa);
 
         final post = adapter.requests.last;
         final body = post.data as Map<String, dynamic>;
         expect(post.method, 'POST');
-        expect(body['manufacturerId'], 2);
-        expect(body['categoryIds'], [1]);
+        expect(body['manufacturer'], '2');
+        expect(body['categories'], ['1']);
+        expect(body['width_cm'], 210);
         expect(body.containsKey('id'), isFalse);
         expect(body.containsKey('deletedAt'), isFalse);
         expect(post.headers['Authorization'], 'Bearer token-1');
-        expect(created.id, 42);
+        expect(created.id, '42');
       },
     );
 
     test('422 — ошибки привязаны к полям формы', () async {
       auth.adoptTokensForTest(accessToken: 'token-1');
-      adapter.handler = (o) async => json(422, {
+      adapter.handler = (o) async => json(400, {
         'message': 'Ошибка валидации',
-        'errors': {'sku': 'Артикул DV-1001 уже есть у другого товара'},
+        'data': {'sku': {'message': 'Артикул DV-1001 уже есть у другого товара'}},
       });
 
       final error = await errorOf(() => products.create(sofa));
 
       expect(error, isA<ApiValidationException>());
-      // Формы из ПР3 ловят ValidationException — подходит и серверная.
       expect(error, isA<ValidationException>());
       expect(
         (error as ValidationException).errors['sku'],
@@ -273,7 +263,7 @@ void main() {
             'Нельзя удалить «Северный лес»: на него ссылаются 5 товаров.',
       });
 
-      final error = await errorOf(() => manufacturers.softDelete(2));
+      final error = await errorOf(() => manufacturers.softDelete('2'));
 
       expect(error, isA<ConflictException>());
       expect(
@@ -290,45 +280,41 @@ void main() {
       });
 
       final error = await errorOf(
-        () => orders.place(customerId: 1, productId: 7, quantity: 5),
+        () => orders.place(customerId: '1', productId: '7', quantity: 5),
       );
 
       expect(error, isA<ConflictException>());
-      expect(adapter.requests.single.path, '/orders');
+      expect(adapter.requests.single.path, '/api/collections/orders/records');
     });
 
     test(
       'истёкший токен: обновляется через refresh и запрос повторяется',
       () async {
-        auth.adoptTokensForTest(
-          accessToken: 'old',
-          refreshToken: 'refresh-1',
-        );
+        auth.adoptTokensForTest(accessToken: 'old', refreshToken: 'refresh-1');
         var refreshes = 0;
         adapter.handler = (o) async {
-          if (o.path == '/auth/refresh') {
+          if (o.path.contains('auth-refresh')) {
             refreshes++;
             return json(200, {
-              'accessToken': 'fresh',
-              'refreshToken': 'refresh-2',
-              'expiresIn': 900,
-              'user': {
-                'id': 1,
+              'token': 'fresh',
+              'record': {
+                'id': '1',
                 'username': 'manager',
-                'fullName': 'Менеджер',
+                'name': 'Менеджер',
                 'role': 'manager',
               },
             });
           }
           return o.headers['Authorization'] == 'Bearer fresh'
-              ? json(204, null)
+              ? json(200, productJson('7'))
               : json(401, {'message': 'Требуется аутентификация'});
         };
 
-        await products.softDelete(7);
+        await products.softDelete('7');
 
         expect(refreshes, 1);
-        expect(adapter.requests.length, 3); // DELETE → refresh → DELETE
+        expect(adapter.requests.length, 3);
+        expect(adapter.requests.first.method, 'PATCH');
       },
     );
 
@@ -337,7 +323,7 @@ void main() {
       adapter.handler = (o) async =>
           json(403, {'message': 'Операция доступна начиная с роли «manager»'});
 
-      final error = await errorOf(() => products.softDelete(7));
+      final error = await errorOf(() => products.softDelete('7'));
 
       expect(error, isA<ForbiddenException>());
     });
@@ -352,7 +338,7 @@ void main() {
         final error = await errorOf(() => products.find(const ProductQuery()));
 
         expect(error, isA<NetworkException>());
-        expect(adapter.requests.length, 4); // первая попытка + 3 повтора
+        expect(adapter.requests.length, 4);
       },
     );
 
@@ -370,7 +356,7 @@ void main() {
       var call = 0;
       adapter.handler = (o) async => ++call < 3
           ? json(500, {'message': 'Ошибка'})
-          : json(200, page([productJson(1)]));
+          : json(200, page([productJson('1')]));
 
       final result = await products.find(const ProductQuery());
 

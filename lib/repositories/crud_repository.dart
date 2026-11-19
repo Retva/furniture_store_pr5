@@ -8,18 +8,18 @@ abstract interface class CrudRepository<T extends Entity, Q> {
   /// Все записи без страниц — для выпадающих списков и подписей.
   Future<List<T>> findAll({bool includeDeleted = true});
 
-  Future<T?> findById(int id);
+  Future<T?> findById(String id);
 
   /// Бросает [ValidationException], если нарушена уникальность.
   Future<T> create(T item);
 
   Future<T> update(T item);
 
-  Future<void> softDelete(int id);
+  Future<void> softDelete(String id);
 
-  Future<void> hardDelete(int id);
+  Future<void> hardDelete(String id);
 
-  Future<void> restore(int id);
+  Future<void> restore(String id);
 
-  Future<int> deleteMany(List<int> ids);
+  Future<int> deleteMany(List<String> ids);
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../api/api_exception.dart';
 import '../api/auth_api.dart';
+import '../state/auth_notifier.dart';
 import '../core/formatting.dart';
 import '../widgets/state_views.dart';
 
@@ -20,11 +21,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   @override
   void initState() {
     super.initState();
-    _future = context.read<AuthApi>().myOrders();
+    final userId = context.read<AuthNotifier>().user!.id;
+    _future = context.read<AuthApi>().myOrders(userId);
   }
 
   void _reload() {
-    setState(() => _future = context.read<AuthApi>().myOrders());
+    final userId = context.read<AuthNotifier>().user!.id;
+    setState(() => _future = context.read<AuthApi>().myOrders(userId));
   }
 
   @override

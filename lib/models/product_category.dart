@@ -11,7 +11,7 @@ class ProductCategory implements Entity {
   });
 
   @override
-  final int id;
+  final String id;
   final String name;
   final String description;
 
@@ -23,7 +23,7 @@ class ProductCategory implements Entity {
 
   factory ProductCategory.fromJson(Map<String, dynamic> json) =>
       ProductCategory(
-        id: JsonRead.integer(json['id']),
+        id: JsonRead.id(json['id']),
         name: JsonRead.text(json['name']),
         description: JsonRead.text(json['description']),
         deletedAt: JsonRead.date(json['deletedAt']),
@@ -37,7 +37,7 @@ class ProductCategory implements Entity {
   };
 
   ProductCategory copyWith({
-    int? id,
+    String? id,
     String? name,
     String? description,
     DateTime? deletedAt,

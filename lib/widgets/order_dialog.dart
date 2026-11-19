@@ -48,7 +48,7 @@ class _OrderDialogState extends State<_OrderDialog> {
   final _quantity = TextEditingController(text: '1');
 
   late Future<List<Customer>> _customers = _loadCustomers();
-  int? _customerId;
+  String? _customerId;
   bool _sending = false;
   String? _conflict;
   Map<String, String> _fieldErrors = {};
@@ -142,7 +142,7 @@ class _OrderDialogState extends State<_OrderDialog> {
                     '${formatPrice(p.price)} · на складе: ${formatStock(p.stock)}',
                   ),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
+                  DropdownButtonFormField<String>(
                     initialValue: _customerId,
                     isExpanded: true,
                     decoration: const InputDecoration(

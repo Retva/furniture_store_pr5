@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextFormField(
                         controller: _username,
                         decoration: const InputDecoration(
-                          labelText: 'Логин',
+                          labelText: 'Email / логин',
                           border: OutlineInputBorder(),
                         ),
                         textInputAction: TextInputAction.next,
@@ -141,9 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 12),
                       TextButton(
-                        onPressed: _busy
-                            ? null
-                            : () => context.go('/register'),
+                        onPressed: _busy ? null : () => context.go('/register'),
                         child: const Text('Создать учётную запись'),
                       ),
                     ],

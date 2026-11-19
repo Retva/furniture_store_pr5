@@ -7,30 +7,28 @@ import '../../models/list_query.dart';
 import '../../models/page_result.dart';
 import '../crud_repository.dart';
 
-/// Общая часть всех репозиториев, работающих через REST API.
-/// Каждая сущность отличается только адресом ресурса и тем, как запись переводится в JSON и обратно. Всё остальное — страницы, фильтры,
-/// удаление, восстановление, перевод ошибок — одинаково и написано здесь.
+/// Общая часть всех репозиториев, работающих через PocketBase REST API.
 class ApiCrudRepository<T extends Entity, Q extends ListQuery>
     implements CrudRepository<T, Q> {
   ApiCrudRepository(
     this.dio, {
     required this.resource,
     required this.fromJson,
-    required this.toJson,
+    required this.toInput,
+    required this.listParams,
   });
 
   final Dio dio;
 
-  /// Имя коллекции в адресе: `products` → `/api/products`.
+  /// Имя коллекции PocketBase: `products` → `/api/collections/products/records`.
   final String resource;
   final T Function(Map<String, dynamic>) fromJson;
-  final Map<String, dynamic> Function(T) toJson;
+  final Map<String, dynamic> Function(T) toInput;
+  final Map<String, dynamic> Function(Q query) listParams;
 
   final LatestRequest _listRequest = LatestRequest();
   final List<void Function()> _changeListeners = [];
 
-  /// Подписка на изменения данных. Через неё кэш справочников узнаёт, что
-  /// категория или производитель изменились и их надо перечитать.
   void addChangeListener(void Function() listener) =>
       _changeListeners.add(listener);
 
@@ -40,14 +38,7 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
     }
   }
 
-  String get _path => '/$resource';
-
-  /// Представление записи для отправки: без `id` и `deletedAt` — их
-  /// назначает сервер. Связи уходят идентификаторами (`manufacturerId`,
-  /// `categoryIds`), а возвращаются развёрнутыми объектами.
-  Map<String, dynamic> toInput(T item) => toJson(item)
-    ..remove('id')
-    ..remove('deletedAt');
+  String get _path => '/api/collections/$resource/records';
 
   PageResult<T> parsePage(Map<String, dynamic> data) => PageResult<T>(
     items: [
@@ -55,25 +46,20 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
         fromJson((row as Map).cast<String, dynamic>()),
     ],
     page: data['page'] as int,
-    size: data['size'] as int,
-    total: data['total'] as int,
+    size: (data['perPage'] as int?) ?? (data['size'] as int?) ?? 10,
+    total: (data['totalItems'] as int?) ?? (data['total'] as int?) ?? 0,
   );
 
-  /// Страница списка. Поиск, фильтры, сортировка и разбиение на страницы
-  /// выполняются на сервере. Новый вызов отменяет предыдущий, если тот
-  /// ещё не завершился.
   @override
   Future<PageResult<T>> find(Q query) => guard(() async {
     final response = await dio.get<Map<String, dynamic>>(
       _path,
-      queryParameters: query.toApiParameters(),
+      queryParameters: listParams(query),
       cancelToken: _listRequest.next(),
     );
     return parsePage(response.data!);
   });
 
-  /// Все записи — для выпадающих списков. Сервер отдаёт не больше 100
-  /// записей за раз, поэтому страницы запрашиваются по очереди.
   @override
   Future<List<T>> findAll({bool includeDeleted = true}) => guard(() async {
     final all = <T>[];
@@ -83,9 +69,9 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
         _path,
         queryParameters: {
           'page': page,
-          'size': 100,
-          'sort': 'id,asc',
-          if (includeDeleted) 'includeDeleted': true,
+          'perPage': 100,
+          'sort': 'name',
+          if (!includeDeleted) 'filter': 'deleted_at = ""',
         },
       );
       final result = parsePage(response.data!);
@@ -95,15 +81,11 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
     }
   });
 
-  /// Запись по номеру; `null`, если её нет (ответ 404).
   @override
-  Future<T?> findById(int id) async {
+  Future<T?> findById(String id) async {
     try {
       return await guard(() async {
-        final response = await dio.get<Map<String, dynamic>>(
-          '$_path/$id',
-          queryParameters: {'includeDeleted': true},
-        );
+        final response = await dio.get<Map<String, dynamic>>('$_path/$id');
         return fromJson(response.data!);
       });
     } on NotFoundException {
@@ -123,7 +105,7 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
 
   @override
   Future<T> update(T item) => guard(() async {
-    final response = await dio.put<Map<String, dynamic>>(
+    final response = await dio.patch<Map<String, dynamic>>(
       '$_path/${item.id}',
       data: toInput(item),
     );
@@ -132,39 +114,43 @@ class ApiCrudRepository<T extends Entity, Q extends ListQuery>
   });
 
   @override
-  Future<void> softDelete(int id) => guard(() async {
+  Future<void> softDelete(String id) => guard(() async {
+    await dio.patch<void>(
+      '$_path/$id',
+      data: {'deleted_at': DateTime.now().toUtc().toIso8601String()},
+    );
+    notifyChanged();
+  });
+
+  @override
+  Future<void> hardDelete(String id) => guard(() async {
     await dio.delete<void>('$_path/$id');
     notifyChanged();
   });
 
   @override
-  Future<void> hardDelete(int id) => guard(() async {
-    await dio.delete<void>('$_path/$id', queryParameters: {'hard': true});
+  Future<void> restore(String id) => guard(() async {
+    await dio.patch<Map<String, dynamic>>('$_path/$id', data: {'deleted_at': ''});
     notifyChanged();
   });
 
   @override
-  Future<void> restore(int id) => guard(() async {
-    await dio.post<Map<String, dynamic>>('$_path/$id/restore');
+  Future<int> deleteMany(List<String> ids) => guard(() async {
+    for (final id in ids) {
+      await dio.patch<void>(
+        '$_path/$id',
+        data: {'deleted_at': DateTime.now().toUtc().toIso8601String()},
+      );
+    }
     notifyChanged();
+    return ids.length;
   });
 
-  @override
-  Future<int> deleteMany(List<int> ids) => guard(() async {
-    final response = await dio.post<Map<String, dynamic>>(
-      '$_path/bulk-delete',
-      data: {'ids': ids},
-    );
-    notifyChanged();
-    return response.data!['deleted'] as int;
-  });
-
-  /// Сколько записей подходит под фильтр — без загрузки самих записей.
-  Future<int> count(Map<String, Object> filter) => guard(() async {
+  Future<int> countWithFilter(String filter) => guard(() async {
     final response = await dio.get<Map<String, dynamic>>(
       _path,
-      queryParameters: {...filter, 'size': 1, 'includeDeleted': true},
+      queryParameters: {'page': 1, 'perPage': 1, 'filter': filter},
     );
-    return response.data!['total'] as int;
+    return (response.data!['totalItems'] as int?) ?? 0;
   });
 }

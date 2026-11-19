@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+
+import '../state/auth_notifier.dart';
 
 class ForbiddenScreen extends StatelessWidget {
   const ForbiddenScreen({super.key});
@@ -7,6 +10,11 @@ class ForbiddenScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final auth = context.watch<AuthNotifier>();
+    final tampered = auth.roleTampered;
+    final stored = auth.storedRole;
+    final real = auth.user?.role;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -28,17 +36,30 @@ class ForbiddenScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Этот раздел недоступен вашей роли. '
-                'Клиентская проверка лишь скрывает недоступное; '
-                'решение о доступе принимает сервер.',
+                tampered
+                    ? 'Роль в localStorage (${stored?.code ?? '—'}) не совпадает '
+                          'с ролью на сервере (${real?.code ?? '—'}). '
+                          'Подмена на клиенте не выдаёт права — решение принимает сервер.'
+                    : 'Этот раздел недоступен вашей роли. '
+                          'Клиентская проверка лишь скрывает недоступное; '
+                          'решение о доступе принимает сервер.',
                 style: theme.textTheme.bodyMedium,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
-              FilledButton(
-                onPressed: () => context.go('/'),
-                child: const Text('На главную'),
-              ),
+              if (tampered)
+                FilledButton(
+                  onPressed: () async {
+                    await auth.restoreStoredRole();
+                    if (context.mounted) context.go('/');
+                  },
+                  child: const Text('Восстановить роль'),
+                )
+              else
+                FilledButton(
+                  onPressed: () => context.go('/'),
+                  child: const Text('На главную'),
+                ),
             ],
           ),
         ),

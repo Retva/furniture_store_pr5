@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../api/debug_options.dart';
 import '../repositories/network_simulator.dart';
 
-/// Учебное меню «Отладка» в шапке: `__delay`, `__fail`.
-/// Смена роли — через выход и вход под другой учётной записью (ПР5).
+/// Учебное меню «Отладка» в шапке: `__delay`, `__fail`, смена роли в localStorage.
 class DebugSettingsNotifier extends ChangeNotifier {
   DebugSettingsNotifier({this.options, this.simulator});
 

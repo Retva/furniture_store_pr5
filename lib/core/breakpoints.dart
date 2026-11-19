@@ -1,6 +1,5 @@
 import 'package:flutter/widgets.dart';
 
-
 enum ScreenSize { compact, medium, expanded }
 
 class Breakpoints {

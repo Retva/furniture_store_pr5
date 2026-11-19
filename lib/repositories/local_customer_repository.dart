@@ -45,7 +45,7 @@ class LocalCustomerRepository extends LocalCrudRepository<Customer, BasicQuery>
       : item.copyWith(deletedAt: deletedAt);
 
   @override
-  Customer withId(Customer item, int id) => item.copyWith(id: id);
+  Customer withId(Customer item, String id) => item.copyWith(id: id);
 
   @override
   Map<String, String> uniquenessErrors(Customer item) => {

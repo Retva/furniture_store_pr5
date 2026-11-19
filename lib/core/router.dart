@@ -55,14 +55,17 @@ GoRouter createRouter(UnsavedChangesGuard guard, AuthNotifier auth) {
     required Widget form,
     required CrudRepository<T, dynamic> Function(BuildContext) repository,
   }) {
-    Widget withForm(BuildContext context, int? id) => ChangeNotifierProvider(
+    Widget withForm(BuildContext context, String? id) => ChangeNotifierProvider(
       key: ValueKey('$path-form-$id'),
       create: (c) => EntityFormController<T>(repository(c), id)..load(),
       child: form,
     );
 
-    int? idOf(GoRouterState state) =>
-        int.tryParse(state.pathParameters['id'] ?? '');
+    String? idOf(GoRouterState state) {
+      final raw = state.pathParameters['id'];
+      if (raw == null || raw.isEmpty) return null;
+      return raw;
+    }
 
     return [
       GoRoute(path: path, builder: (context, state) => list(state)),
@@ -116,6 +119,10 @@ GoRouter createRouter(UnsavedChangesGuard guard, AuthNotifier auth) {
       }
       if (loggedIn && isPublic) return '/';
 
+      if (loggedIn && auth.roleTampered && target != '/forbidden') {
+        return '/forbidden';
+      }
+
       if (loggedIn && !isPublic) {
         final denied = auth.permissions.redirectFor(target);
         if (denied == '/forbidden' && target != '/forbidden') {
@@ -127,9 +134,8 @@ GoRouter createRouter(UnsavedChangesGuard guard, AuthNotifier auth) {
     routes: [
       GoRoute(
         path: '/login',
-        builder: (context, state) => LoginScreen(
-          from: state.uri.queryParameters['from'],
-        ),
+        builder: (context, state) =>
+            LoginScreen(from: state.uri.queryParameters['from']),
       ),
       GoRoute(
         path: '/register',

@@ -13,23 +13,50 @@ class JsonRead {
   static String text(Object? value, [String fallback = '']) =>
       value is String ? value : (value == null ? fallback : value.toString());
 
-  /// Список идентификаторов. Понимает обе формы: `[1, 2]` — так связи
-  /// хранятся локально и уходят на сервер, и `[{"id": 1, "name": …}]` —
+  /// Идентификатор записи: строка; число из старых данных переводится в строку.
+  static String id(Object? value, [String fallback = '']) {
+    if (value == null) return fallback;
+    if (value is String) return value;
+    if (value is num) return value.toString();
+    return value.toString();
+  }
+
+  /// Список идентификаторов. Понимает обе формы: `['a','b']` — так связи
+  /// хранятся локально и уходят на сервер, и `[{"id": "x", "name": …}]` —
   /// так сервер присылает развёрнутые объекты.
-  static List<int> ids(Object? value) {
+  static List<String> ids(Object? value) {
     if (value is! List) return const [];
-    return value
-        .map((e) => e is Map ? integer(e['id'], -1) : integer(e, -1))
-        .where((e) => e > 0)
-        .toList();
+    final result = <String>[];
+    for (final e in value) {
+      if (e is Map) {
+        final parsed = id(e['id']);
+        if (parsed.isNotEmpty) result.add(parsed);
+        continue;
+      }
+      if (e is num) {
+        if (e > 0) result.add(e.toString());
+        continue;
+      }
+      if (e is String) {
+        final parsed = id(e);
+        if (parsed.isEmpty) continue;
+        final asInt = int.tryParse(parsed);
+        if (asInt != null && asInt > 0) {
+          result.add(parsed);
+        } else if (RegExp(r'^(l\d+|[a-z0-9]{15})$').hasMatch(parsed)) {
+          result.add(parsed);
+        }
+      }
+    }
+    return result;
   }
 
   /// Идентификатор связанной записи: из поля `manufacturerId` или, если
   /// его нет, из вложенного объекта `manufacturer: {"id": …}`.
-  static int refId(Map<String, dynamic> json, String idKey, String objectKey) {
-    if (json[idKey] != null) return integer(json[idKey]);
+  static String refId(Map<String, dynamic> json, String idKey, String objectKey) {
+    if (json[idKey] != null) return id(json[idKey]);
     final nested = json[objectKey];
-    return nested is Map ? integer(nested['id']) : 0;
+    return nested is Map ? id(nested['id']) : '';
   }
 
   static DateTime? date(Object? value) =>

@@ -18,14 +18,14 @@ class Manufacturer implements Entity {
   });
 
   @override
-  final int id;
+  final String id;
   final String name;
   final String country;
   final String city;
   final int foundedYear;
   final String email;
   final String website;
-  final List<int> materialIds;
+  final List<String> materialIds;
   final String description;
 
   @override
@@ -35,7 +35,7 @@ class Manufacturer implements Entity {
   bool get isDeleted => deletedAt != null;
 
   factory Manufacturer.fromJson(Map<String, dynamic> json) => Manufacturer(
-    id: JsonRead.integer(json['id']),
+    id: JsonRead.id(json['id']),
     name: JsonRead.text(json['name']),
     country: JsonRead.text(json['country']),
     city: JsonRead.text(json['city']),
@@ -61,14 +61,14 @@ class Manufacturer implements Entity {
   };
 
   Manufacturer copyWith({
-    int? id,
+    String? id,
     String? name,
     String? country,
     String? city,
     int? foundedYear,
     String? email,
     String? website,
-    List<int>? materialIds,
+    List<String>? materialIds,
     String? description,
     DateTime? deletedAt,
     bool clearDeletedAt = false,

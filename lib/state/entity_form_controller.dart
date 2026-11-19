@@ -35,7 +35,7 @@ class EntityFormController<T extends Entity> extends ChangeNotifier {
   EntityFormController(this._repository, this.id);
 
   final CrudRepository<T, dynamic> _repository;
-  final int? id;
+  final String? id;
 
   FormLoadState<T> _state = FormLoading<T>();
   bool _saving = false;

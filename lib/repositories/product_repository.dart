@@ -5,7 +5,7 @@ import 'crud_repository.dart';
 abstract interface class ProductRepository
     implements CrudRepository<Product, ProductQuery> {
   /// Сколько товаров (включая логически удалённые) ссылается на запись.
-  Future<int> countByManufacturer(int manufacturerId);
-  Future<int> countByCategory(int categoryId);
-  Future<int> countByMaterial(int materialId);
+  Future<int> countByManufacturer(String manufacturerId);
+  Future<int> countByCategory(String categoryId);
+  Future<int> countByMaterial(String materialId);
 }

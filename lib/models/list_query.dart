@@ -90,6 +90,12 @@ class QueryParams {
     return int.tryParse(raw.trim());
   }
 
+  /// Идентификатор из адресной строки; пустое — отсутствие фильтра.
+  static String? parseId(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    return raw.trim();
+  }
+
   static int parsePage(String? raw) {
     final value = parseInt(raw);
     return value == null || value < 1 ? 1 : value;

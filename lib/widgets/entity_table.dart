@@ -62,13 +62,13 @@ class EntityTable<T extends Entity> extends StatelessWidget {
   final List<T> items;
 
   /// Идентификаторы отмеченных записей.
-  final Set<int> selected;
+  final Set<String> selected;
 
   /// Переключение флажка в строке. `null` — флажков нет вовсе.
-  final ValueChanged<int>? onToggleSelect;
+  final ValueChanged<String>? onToggleSelect;
 
   /// Флажок в заголовке: отметить или снять все записи на странице.
-  final void Function(List<int> ids, bool selected)? onSelectAll;
+  final void Function(List<String> ids, bool selected)? onSelectAll;
 
   final String? sortField;
   final bool sortAscending;

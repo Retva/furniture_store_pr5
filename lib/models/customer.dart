@@ -44,7 +44,7 @@ class Customer implements Entity {
   });
 
   @override
-  final int id;
+  final String id;
   final String fullName;
   final String email;
   final String phone;
@@ -59,7 +59,7 @@ class Customer implements Entity {
   bool get hasCard => card != null;
 
   factory Customer.fromJson(Map<String, dynamic> json) => Customer(
-    id: JsonRead.integer(json['id']),
+    id: JsonRead.id(json['id']),
     fullName: JsonRead.text(json['fullName']),
     email: JsonRead.text(json['email']),
     phone: JsonRead.text(json['phone']),
@@ -77,7 +77,7 @@ class Customer implements Entity {
   };
 
   Customer copyWith({
-    int? id,
+    String? id,
     String? fullName,
     String? email,
     String? phone,

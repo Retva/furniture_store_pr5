@@ -11,7 +11,7 @@ class EntityDetailNotifier<T extends Entity> extends ChangeNotifier {
   EntityDetailNotifier(this._repository, this.id);
 
   final CrudRepository<T, dynamic> _repository;
-  final int id;
+  final String id;
 
   DetailState<T> _state = DetailLoading<T>();
   bool _disposed = false;

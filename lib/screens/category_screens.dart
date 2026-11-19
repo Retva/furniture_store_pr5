@@ -100,7 +100,7 @@ class CategoryFormScreen extends StatelessWidget {
         ),
       ],
       build: (v, original) => ProductCategory(
-        id: original?.id ?? 0,
+        id: original?.id ?? '',
         name: (v['name'] as String).trim(),
         description: (v['description'] as String).trim(),
       ),

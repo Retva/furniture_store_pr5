@@ -53,7 +53,7 @@ class LocalMaterialRepository
       : item.copyWith(deletedAt: deletedAt);
 
   @override
-  FurnitureMaterial withId(FurnitureMaterial item, int id) =>
+  FurnitureMaterial withId(FurnitureMaterial item, String id) =>
       item.copyWith(id: id);
 
   @override

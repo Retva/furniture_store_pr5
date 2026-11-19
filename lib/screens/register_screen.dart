@@ -38,6 +38,7 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _fullName = TextEditingController();
+  final _email = TextEditingController();
   final _username = TextEditingController();
   final _password = TextEditingController();
   final _confirm = TextEditingController();
@@ -56,6 +57,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   void dispose() {
     _password.removeListener(_onPasswordChanged);
     _fullName.dispose();
+    _email.dispose();
     _username.dispose();
     _password.dispose();
     _confirm.dispose();
@@ -74,6 +76,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _busy = true);
     try {
       await context.read<AuthNotifier>().register(
+        email: _email.text.trim(),
         username: _username.text.trim(),
         password: _password.text,
         fullName: _fullName.text.trim(),
@@ -131,6 +134,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         validator: V.combine([
                           V.required('Укажите имя'),
                           V.length(min: 2, max: 120),
+                        ]),
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _email,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        validator: V.combine([
+                          V.required('Введите email'),
+                          V.pattern(
+                            RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+                            'Некорректный email',
+                          ),
                         ]),
                       ),
                       const SizedBox(height: 12),

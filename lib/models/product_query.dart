@@ -24,8 +24,8 @@ class ProductQuery extends ListQuery {
     );
     return ProductQuery(
       search: params['search'] ?? '',
-      categoryId: QueryParams.parseInt(params['categoryId']),
-      manufacturerId: QueryParams.parseInt(params['manufacturerId']),
+      categoryId: QueryParams.parseId(params['categoryId']),
+      manufacturerId: QueryParams.parseId(params['manufacturerId']),
       priceFrom: QueryParams.parseInt(params['priceFrom']),
       priceTo: QueryParams.parseInt(params['priceTo']),
       sortField: sortField,
@@ -41,8 +41,8 @@ class ProductQuery extends ListQuery {
   /// Поля, по которым разрешена сортировка.
   static const Set<String> sortFields = {'name', 'sku', 'price', 'stock'};
 
-  final int? categoryId;
-  final int? manufacturerId;
+  final String? categoryId;
+  final String? manufacturerId;
 
   final int? priceFrom;
   final int? priceTo;
@@ -74,10 +74,10 @@ class ProductQuery extends ListQuery {
       search: search ?? this.search,
       categoryId: identical(categoryId, _unset)
           ? this.categoryId
-          : categoryId as int?,
+          : categoryId as String?,
       manufacturerId: identical(manufacturerId, _unset)
           ? this.manufacturerId
-          : manufacturerId as int?,
+          : manufacturerId as String?,
       priceFrom: identical(priceFrom, _unset)
           ? this.priceFrom
           : priceFrom as int?,

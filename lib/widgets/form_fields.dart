@@ -130,17 +130,17 @@ class MultiSelectFieldSpec extends FieldSpec {
 
   final String name;
   final String label;
-  final Map<int, String> options;
+  final Map<String, String> options;
   final int minCount;
   final String emptyText;
 
   @override
   Widget build(BuildContext context, FormScope scope) {
     final current = [
-      for (final id in (scope.values[name] as List<int>? ?? const <int>[]))
+      for (final id in (scope.values[name] as List<String>? ?? const <String>[]))
         if (options.containsKey(id)) id,
     ];
-    return FormField<List<int>>(
+    return FormField<List<String>>(
       // Ключ зависит от набора вариантов: когда каскад меняет список,
       // поле создаётся заново с отфильтрованным значением.
       key: ValueKey('$name-${options.keys.join(',')}'),

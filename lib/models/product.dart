@@ -22,12 +22,12 @@ class Product implements Entity {
   });
 
   @override
-  final int id;
+  final String id;
   final String name;
   final String sku;
-  final int manufacturerId;
-  final List<int> categoryIds;
-  final List<int> materialIds;
+  final String manufacturerId;
+  final List<String> categoryIds;
+  final List<String> materialIds;
   final int price;
   final int stock;
   final int widthCm;
@@ -50,7 +50,7 @@ class Product implements Entity {
   /// `categoryIds`) и ответ сервера (`manufacturer: {id, name}`,
   /// `categories: [{id, name}]`).
   factory Product.fromJson(Map<String, dynamic> json) => Product(
-    id: JsonRead.integer(json['id']),
+    id: JsonRead.id(json['id']),
     name: JsonRead.text(json['name']),
     sku: JsonRead.text(json['sku']),
     manufacturerId: JsonRead.refId(json, 'manufacturerId', 'manufacturer'),
@@ -84,12 +84,12 @@ class Product implements Entity {
   };
 
   Product copyWith({
-    int? id,
+    String? id,
     String? name,
     String? sku,
-    int? manufacturerId,
-    List<int>? categoryIds,
-    List<int>? materialIds,
+    String? manufacturerId,
+    List<String>? categoryIds,
+    List<String>? materialIds,
     int? price,
     int? stock,
     int? widthCm,

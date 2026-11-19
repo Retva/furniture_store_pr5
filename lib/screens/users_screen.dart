@@ -88,10 +88,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     value: user.role,
                     items: [
                       for (final role in Role.values)
-                        DropdownMenuItem(
-                          value: role,
-                          child: Text(role.label),
-                        ),
+                        DropdownMenuItem(value: role, child: Text(role.label)),
                     ],
                     onChanged: (role) {
                       if (role != null && role != user.role) {

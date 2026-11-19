@@ -51,7 +51,7 @@ class LocalManufacturerRepository
       : item.copyWith(deletedAt: deletedAt);
 
   @override
-  Manufacturer withId(Manufacturer item, int id) => item.copyWith(id: id);
+  Manufacturer withId(Manufacturer item, String id) => item.copyWith(id: id);
 
   @override
   Map<String, String> uniquenessErrors(Manufacturer item) => {

@@ -26,7 +26,7 @@ class ManufacturerFormScreen extends StatelessWidget {
         'foundedYear': m?.foundedYear.toString() ?? '',
         'email': m?.email ?? '',
         'website': m?.website ?? '',
-        'materialIds': m?.materialIds ?? <int>[],
+        'materialIds': m?.materialIds ?? <String>[],
         'description': m?.description ?? '',
       },
       fields: (values) => [
@@ -92,14 +92,14 @@ class ManufacturerFormScreen extends StatelessWidget {
         ),
       ],
       build: (v, original) => Manufacturer(
-        id: original?.id ?? 0,
+        id: original?.id ?? '',
         name: (v['name'] as String).trim(),
         country: (v['country'] as String).trim(),
         city: (v['city'] as String).trim(),
         foundedYear: int.parse(v['foundedYear'] as String),
         email: (v['email'] as String).trim(),
         website: (v['website'] as String).trim(),
-        materialIds: List<int>.of(v['materialIds'] as List<int>),
+        materialIds: List<String>.of(v['materialIds'] as List<String>),
         description: (v['description'] as String).trim(),
       ),
     );

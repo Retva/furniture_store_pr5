@@ -162,9 +162,9 @@ class _Dropdown extends StatelessWidget {
 
   final String label;
   final String anyLabel;
-  final int? value;
-  final Map<int, String> options;
-  final ValueChanged<int?> onChanged;
+  final String? value;
+  final Map<String, String> options;
+  final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -176,7 +176,7 @@ class _Dropdown extends StatelessWidget {
       if (value != null && !options.containsKey(value)) value!: '№ $value',
     };
 
-    return DropdownButtonFormField<int?>(
+    return DropdownButtonFormField<String?>(
       // Вторая тонкость: поле формы запоминает начальное значение и потом
       // его не перечитывает. После «назад» в браузере значение в адресе
       // другое, а поле показывало бы старое. Ключ по значению заставляет
@@ -189,9 +189,9 @@ class _Dropdown extends StatelessWidget {
         border: const OutlineInputBorder(),
       ),
       items: [
-        DropdownMenuItem<int?>(value: null, child: Text(anyLabel)),
+        DropdownMenuItem<String?>(value: null, child: Text(anyLabel)),
         for (final entry in items.entries)
-          DropdownMenuItem<int?>(
+          DropdownMenuItem<String?>(
             value: entry.key,
             child: Text(entry.value, overflow: TextOverflow.ellipsis),
           ),

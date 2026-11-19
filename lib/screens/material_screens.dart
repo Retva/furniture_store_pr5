@@ -112,7 +112,7 @@ class MaterialFormScreen extends StatelessWidget {
         ),
       ],
       build: (v, original) => FurnitureMaterial(
-        id: original?.id ?? 0,
+        id: original?.id ?? '',
         name: (v['name'] as String).trim(),
         kind: v['kind'] as String,
         origin: (v['origin'] as String).trim(),

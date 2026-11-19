@@ -181,7 +181,7 @@ class CustomerFormScreen extends StatelessWidget {
           ),
       ],
       build: (v, original) => Customer(
-        id: original?.id ?? 0,
+        id: original?.id ?? '',
         fullName: (v['fullName'] as String).trim(),
         email: (v['email'] as String).trim().toLowerCase(),
         phone: (v['phone'] as String).trim(),

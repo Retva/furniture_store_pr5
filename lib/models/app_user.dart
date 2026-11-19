@@ -1,3 +1,4 @@
+import 'json_read.dart';
 import 'role.dart';
 
 class AppUser {
@@ -8,16 +9,16 @@ class AppUser {
     required this.role,
   });
 
-  final int id;
+  final String id;
   final String username;
   final String fullName;
   final Role role;
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
     return AppUser(
-      id: (json['id'] as num).toInt(),
+      id: JsonRead.id(json['id']),
       username: json['username'] as String? ?? '',
-      fullName: json['fullName'] as String? ?? '',
+      fullName: json['fullName'] as String? ?? json['name'] as String? ?? '',
       role: Role.fromCode(json['role'] as String?),
     );
   }
@@ -28,6 +29,20 @@ class AppUser {
     'fullName': fullName,
     'role': role.code,
   };
+
+  AppUser copyWith({
+    String? id,
+    String? username,
+    String? fullName,
+    Role? role,
+  }) {
+    return AppUser(
+      id: id ?? this.id,
+      username: username ?? this.username,
+      fullName: fullName ?? this.fullName,
+      role: role ?? this.role,
+    );
+  }
 }
 
 class AuthTokens {
@@ -44,6 +59,21 @@ class AuthTokens {
   final AppUser user;
 
   factory AuthTokens.fromJson(Map<String, dynamic> json) {
+    if (json.containsKey('token')) {
+      final token = json['token'] as String;
+      final record = json['record'] as Map<String, dynamic>? ?? const {};
+      return AuthTokens(
+        accessToken: token,
+        refreshToken: token,
+        expiresIn: 86_400,
+        user: AppUser.fromJson({
+          'id': record['id'],
+          'username': record['username'],
+          'fullName': record['name'] ?? record['fullName'],
+          'role': record['role'],
+        }),
+      );
+    }
     return AuthTokens(
       accessToken: json['accessToken'] as String,
       refreshToken: json['refreshToken'] as String,

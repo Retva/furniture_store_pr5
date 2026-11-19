@@ -76,7 +76,7 @@ void main() {
   group('Разбор JSON', () {
     test('пустой объект не роняет разбор', () {
       final p = Product.fromJson({});
-      expect(p.id, 0);
+      expect(p.id, '');
       expect(p.name, '');
       expect(p.categoryIds.isEmpty, isTrue);
       expect(p.deletedAt, isNull);
@@ -89,15 +89,15 @@ void main() {
         'categoryIds': [1, 'x', null, 3],
         'deletedAt': 'не дата',
       });
-      expect(p.id, 7);
+      expect(p.id, '7');
       expect(p.price, 0);
-      expect(p.categoryIds, [1, 3]);
+      expect(p.categoryIds, ['1', '3']);
       expect(p.deletedAt, isNull);
     });
 
     test('покупатель с картой переживает toJson и fromJson', () {
       final c = Customer(
-        id: 1,
+        id: '1',
         fullName: 'Иванова Анна',
         email: 'a@b.ru',
         card: DiscountCard(
@@ -167,7 +167,7 @@ void main() {
         store: productStore(store, report),
         network: network,
       );
-      expect(repo.records.single.categoryIds, [4]);
+      expect(repo.records.single.categoryIds, ['4']);
       expect(repo.records.single.description.contains('Бук'), isTrue);
       expect(report.messages.length, 1);
     });
@@ -188,7 +188,7 @@ void main() {
       final error = await errorOf(
         () => repo.create(
           const Customer(
-            id: 0,
+            id: '',
             fullName: 'Тест Тестов',
             email: 'ANNA.IVANOVA@mail.example',
           ),
@@ -206,10 +206,10 @@ void main() {
         network: network,
         usageCount: products.countByManufacturer,
       );
-      final error = await errorOf(() => manufacturers.softDelete(6));
+      final error = await errorOf(() => manufacturers.softDelete('6'));
       expect(error is RepositoryException, isTrue);
       expect('$error'.contains('3 товара'), isTrue);
-      expect((await manufacturers.findById(6))!.isDeleted, isFalse);
+      expect((await manufacturers.findById('6'))!.isDeleted, isFalse);
     });
 
     test('материал без товаров удаляется', () async {
@@ -218,13 +218,13 @@ void main() {
         network: network,
         usageCount: products.countByMaterial,
       );
-      final error = await errorOf(() => materials.hardDelete(23));
+      final error = await errorOf(() => materials.hardDelete('23'));
       expect(error, isNull);
     });
 
     test('фильтр по категории учитывает несколько категорий товара', () async {
       final repo = LocalProductRepository(network: network);
-      final beds = await repo.find(const ProductQuery(categoryId: 6, size: 50));
+      final beds = await repo.find(const ProductQuery(categoryId: '6', size: 50));
       expect(beds.items.any((p) => p.name.contains('Диван-кровать')), isTrue);
     });
 

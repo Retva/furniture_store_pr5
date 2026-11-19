@@ -115,13 +115,20 @@ class AppShell extends StatelessWidget {
       );
     }
 
+    final expanded = screenSizeOf(context) == ScreenSize.expanded;
+
     return Scaffold(
       appBar: appBar,
       body: Row(
         children: [
           NavigationRail(
-            extended: true,
+            // До 1200 — компактная полоса с подписями под значками;
+            // от 1200 — развёрнутая с подписями рядом.
+            extended: expanded,
             minExtendedWidth: 200,
+            labelType: expanded
+                ? NavigationRailLabelType.none
+                : NavigationRailLabelType.all,
             selectedIndex: selected,
             onDestinationSelected: onSelect,
             destinations: [
@@ -197,55 +204,67 @@ class _DebugMenu extends StatelessWidget {
         smallSize: 8,
         child: const Icon(Icons.bug_report_outlined),
       ),
-      onSelected: (value) => switch (value) {
-        'slow' => debug.toggleSlow(),
-        'fail' => debug.toggleFail(),
-        _ => null,
+      onSelected: (value) {
+        switch (value) {
+          case 'slow':
+            debug.toggleSlow();
+          case 'fail':
+            debug.toggleFail();
+          default:
+            if (value.startsWith('role:')) {
+              final role = Role.fromCode(value.substring(5));
+              context.read<AuthNotifier>().setLocalRole(role);
+            }
+        }
       },
-      itemBuilder: (context) => [
-        if (debug.usesApi) ...[
-          const PopupMenuItem<String>(
-            enabled: false,
-            child: Text('Сервер: ${AppConfig.apiBaseUrl}'),
-          ),
-          PopupMenuItem<String>(
-            enabled: false,
-            child: Text(
-              'Роль: ${context.read<AuthNotifier>().user?.role.label ?? '—'}',
+      itemBuilder: (context) {
+        final auth = context.read<AuthNotifier>();
+        final serverRole = auth.user?.role;
+        final storedRole = auth.storedRole ?? serverRole;
+        return [
+          if (debug.usesApi) ...[
+            const PopupMenuItem<String>(
+              enabled: false,
+              child: Text('Сервер: ${AppConfig.apiBaseUrl}'),
             ),
-          ),
-          const PopupMenuDivider(),
-          CheckedPopupMenuItem<String>(
-            value: 'slow',
-            checked: debug.slowResponses,
-            child: const Text(
-              'Медленные ответы (__delay=${DebugOptions.delayMs})',
-            ),
-          ),
-          CheckedPopupMenuItem<String>(
-            value: 'fail',
-            checked: debug.failResponses,
-            child: const Text(
-              'Ошибка сервера (__fail=${DebugOptions.failStatus})',
-            ),
-          ),
-          const PopupMenuDivider(),
-          const PopupMenuItem<String>(
-            enabled: false,
-            child: Text('Для смены роли войдите под другой учёткой'),
-          ),
-          for (final role in Role.values)
             PopupMenuItem<String>(
               enabled: false,
-              child: Text('  ${role.code}: см. экран входа'),
+              child: Text('Роль на сервере: ${serverRole?.label ?? '—'}'),
             ),
-        ] else
-          CheckedPopupMenuItem<String>(
-            value: 'fail',
-            checked: debug.failResponses,
-            child: const Text('Имитировать сбой сети'),
-          ),
-      ],
+            const PopupMenuDivider(),
+            CheckedPopupMenuItem<String>(
+              value: 'slow',
+              checked: debug.slowResponses,
+              child: const Text(
+                'Медленные ответы (__delay=${DebugOptions.delayMs})',
+              ),
+            ),
+            CheckedPopupMenuItem<String>(
+              value: 'fail',
+              checked: debug.failResponses,
+              child: const Text(
+                'Ошибка сервера (__fail=${DebugOptions.failStatus})',
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem<String>(
+              enabled: false,
+              child: Text('Подмена auth_role → «Недостаточно прав»'),
+            ),
+            for (final role in Role.values)
+              CheckedPopupMenuItem<String>(
+                value: 'role:${role.code}',
+                checked: storedRole == role,
+                child: Text('${role.label} (${role.code})'),
+              ),
+          ] else
+            CheckedPopupMenuItem<String>(
+              value: 'fail',
+              checked: debug.failResponses,
+              child: const Text('Имитировать сбой сети'),
+            ),
+        ];
+      },
     );
   }
 }

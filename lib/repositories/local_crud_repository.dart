@@ -7,7 +7,7 @@ import 'network_simulator.dart';
 import 'repository_exception.dart';
 
 /// Сколько записей других сущностей ссылается на запись [id].
-typedef UsageCounter = Future<int> Function(int id);
+typedef UsageCounter = Future<int> Function(String id);
 
 /// Общая часть локальных хранилищ: страницы, сортировка, удаление,
 /// восстановление, сохранение в localStorage после каждого изменения и
@@ -22,7 +22,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }) : _store = store,
        records = store == null ? [...seed] : store.loadOr(seed),
        network = network ?? NetworkSimulator() {
-    _nextId = records.fold<int>(0, (max, x) => x.id > max ? x.id : max) + 1;
+    _nextCounter = _maxLocalCounter(records) + 1;
   }
 
   final List<T> records;
@@ -33,7 +33,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   /// запись нельзя ни логически, ни физически.
   UsageCounter? usageCount;
 
-  late int _nextId;
+  late int _nextCounter;
 
   String get entityName;
 
@@ -48,10 +48,21 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
 
   T withDeletedAt(T item, DateTime? deletedAt);
 
-  T withId(T item, int id);
+  T withId(T item, String id);
 
   /// Проверка уникальности. Ошибки возвращаются по именам полей.
   Map<String, String> uniquenessErrors(T item) => const {};
+
+  static int _maxLocalCounter(Iterable<Entity> items) {
+    var max = 0;
+    for (final item in items) {
+      final id = item.id;
+      if (!id.startsWith('l')) continue;
+      final n = int.tryParse(id.substring(1));
+      if (n != null && n > max) max = n;
+    }
+    return max;
+  }
 
   Future<void> _persist() async => _store?.save(records);
 
@@ -92,7 +103,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }
 
   @override
-  Future<T?> findById(int id) async {
+  Future<T?> findById(String id) async {
     await network.roundTrip();
     return records.where((item) => item.id == id).firstOrNull;
   }
@@ -100,9 +111,9 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   @override
   Future<T> create(T item) async {
     await network.roundTrip();
-    final created = withId(item, _nextId);
+    final created = withId(item, 'l$_nextCounter');
+    _nextCounter++;
     _checkUnique(created);
-    _nextId++;
     records.add(created);
     await _persist();
     return created;
@@ -119,7 +130,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }
 
   @override
-  Future<void> softDelete(int id) async {
+  Future<void> softDelete(String id) async {
     await network.roundTrip();
     final i = _indexOf(id);
     await _ensureUnused(records[i]);
@@ -128,7 +139,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }
 
   @override
-  Future<void> hardDelete(int id) async {
+  Future<void> hardDelete(String id) async {
     await network.roundTrip();
     await _ensureUnused(records[_indexOf(id)]);
     records.removeWhere((item) => item.id == id);
@@ -136,7 +147,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }
 
   @override
-  Future<void> restore(int id) async {
+  Future<void> restore(String id) async {
     await network.roundTrip();
     final i = _indexOf(id);
     records[i] = withDeletedAt(records[i], null);
@@ -144,7 +155,7 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
   }
 
   @override
-  Future<int> deleteMany(List<int> ids) async {
+  Future<int> deleteMany(List<String> ids) async {
     await network.roundTrip();
     final targets = [
       for (final id in ids)
@@ -185,10 +196,10 @@ abstract class LocalCrudRepository<T extends Entity, Q extends ListQuery>
     if (errors.isNotEmpty) throw ValidationException(errors);
   }
 
-  int _indexOf(int id) {
+  int _indexOf(String id) {
     final i = records.indexWhere((item) => item.id == id);
     if (i == -1) {
-      throw RepositoryException('$entityName с номером $id не найден.');
+      throw RepositoryException('$entityName «$id» не найден.');
     }
     return i;
   }

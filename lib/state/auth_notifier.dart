@@ -6,13 +6,17 @@ import '../core/permissions.dart';
 import '../models/app_user.dart';
 import '../models/role.dart';
 
-/// Сессия пользователя: токены в localStorage, роль — только в памяти
-/// (приходит с сервера при входе и при восстановлении через /auth/me).
+/// Сессия пользователя: токены и роль в localStorage (`flutter.auth_*`).
+///
+/// Ключ `auth_role` можно поменять в DevTools — но права даёт только сервер.
+/// Если значение в localStorage не совпадает с `/auth/me`, показывается
+/// «Недостаточно прав» (учебная демонстрация подмены роли на клиенте).
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier(this._prefs, this.api);
 
   static const _kAccess = 'auth_access_token';
   static const _kRefresh = 'auth_refresh_token';
+  static const _kRole = 'auth_role';
   static const _kSessionStarted = 'auth_session_started_at';
   static const _kLastActivity = 'auth_last_activity_at';
 
@@ -35,12 +39,23 @@ class AuthNotifier extends ChangeNotifier {
   String? _refreshToken;
   DateTime? _sessionStartedAt;
   bool _restoring = true;
+  bool _roleTampered = false;
   Future<void>? _refreshInFlight;
 
   AppUser? get user => _user;
   String? get accessToken => _accessToken;
   bool get isAuthenticated => _user != null;
   bool get isRestoring => _restoring;
+
+  /// localStorage `auth_role` не совпадает с ролью на сервере.
+  bool get roleTampered => _roleTampered;
+
+  /// Роль, записанная в localStorage (может отличаться от [user.role]).
+  Role? get storedRole {
+    final code = _prefs.getString(_kRole);
+    return code == null ? null : Role.fromCode(code);
+  }
+
   Permissions get permissions => Permissions(_user);
   bool has(Role role) => permissions.has(role);
 
@@ -78,7 +93,9 @@ class AuthNotifier extends ChangeNotifier {
       _accessToken = access;
       _refreshToken = refresh;
       try {
-        _user = await api.me();
+        final me = await api.me();
+        _user = me;
+        _checkStoredRole(me);
       } on UnauthorizedException {
         if (refresh != null) {
           try {
@@ -104,11 +121,13 @@ class AuthNotifier extends ChangeNotifier {
   }
 
   Future<void> register({
+    required String email,
     required String username,
     required String password,
     required String fullName,
   }) async {
     final result = await api.register(
+      email: email,
       username: username,
       password: password,
       fullName: fullName,
@@ -122,8 +141,10 @@ class AuthNotifier extends ChangeNotifier {
     _accessToken = null;
     _refreshToken = null;
     _sessionStartedAt = null;
+    _roleTampered = false;
     await _prefs.remove(_kAccess);
     await _prefs.remove(_kRefresh);
+    await _prefs.remove(_kRole);
     await _prefs.remove(_kSessionStarted);
     await _prefs.remove(_kLastActivity);
     if (refresh != null) {
@@ -147,7 +168,7 @@ class AuthNotifier extends ChangeNotifier {
   }
 
   Future<void> _refreshWith(String refresh) async {
-    final result = await api.refresh(refresh);
+    final result = await api.refresh();
     await _applyTokens(result, keepSessionStart: true);
   }
 
@@ -160,6 +181,14 @@ class AuthNotifier extends ChangeNotifier {
     _user = result.user;
     await _prefs.setString(_kAccess, result.accessToken);
     await _prefs.setString(_kRefresh, result.refreshToken);
+    if (!keepSessionStart) {
+      // Вход/регистрация — синхронизируем роль в localStorage с сервером.
+      _roleTampered = false;
+      await _prefs.setString(_kRole, result.user.role.code);
+    } else {
+      // Refresh: права с сервера; подмена auth_role → «Недостаточно прав».
+      _checkStoredRole(result.user);
+    }
     if (!keepSessionStart || _sessionStartedAt == null) {
       _sessionStartedAt = DateTime.now();
       await _prefs.setInt(
@@ -171,11 +200,37 @@ class AuthNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Записать роль в localStorage. Если она не совпадает с серверной —
+  /// включается [roleTampered] и открывается экран «Недостаточно прав».
+  Future<void> setLocalRole(Role role) async {
+    await _prefs.setString(_kRole, role.code);
+    final current = _user;
+    if (current == null) return;
+    _roleTampered = role != current.role;
+    notifyListeners();
+  }
+
+  /// Вернуть `auth_role` к роли с сервера и снять отказ в доступе.
+  Future<void> restoreStoredRole() async {
+    final current = _user;
+    if (current == null) return;
+    await _prefs.setString(_kRole, current.role.code);
+    _roleTampered = false;
+    notifyListeners();
+  }
+
+  void _checkStoredRole(AppUser user) {
+    final stored = _prefs.getString(_kRole);
+    if (stored == null) {
+      _prefs.setString(_kRole, user.role.code);
+      _roleTampered = false;
+      return;
+    }
+    _roleTampered = Role.fromCode(stored) != user.role;
+  }
+
   Future<void> touchActivity() async {
-    await _prefs.setInt(
-      _kLastActivity,
-      DateTime.now().millisecondsSinceEpoch,
-    );
+    await _prefs.setInt(_kLastActivity, DateTime.now().millisecondsSinceEpoch);
   }
 
   bool _sessionExpiredByMaxDuration() {
@@ -197,7 +252,7 @@ class AuthNotifier extends ChangeNotifier {
   /// Локальный режим без сервера: сразу «вошли» как администратор.
   void adoptLocalAdmin() {
     _user = const AppUser(
-      id: 0,
+      id: '',
       username: 'local',
       fullName: 'Локальный администратор',
       role: Role.admin,
@@ -212,7 +267,7 @@ class AuthNotifier extends ChangeNotifier {
     required String accessToken,
     String refreshToken = 'refresh-token',
     AppUser user = const AppUser(
-      id: 1,
+      id: '1',
       username: 'manager',
       fullName: 'Менеджер',
       role: Role.manager,

@@ -96,11 +96,32 @@ ApiException mapDioError(DioException error) {
 
 /// Переводит ответ с кодом ошибки в исключение. Текст берётся из поля
 /// `message` ответа, а если сервер его не прислал — подставляется свой.
+Map<String, String> _fieldErrors(Map<dynamic, dynamic> body) {
+  final raw = body['errors'] ?? body['data'];
+  if (raw is! Map) return const {};
+  final errors = <String, String>{};
+  for (final entry in raw.entries) {
+    final value = entry.value;
+    if (value is String) {
+      errors['${entry.key}'] = value;
+    } else if (value is Map) {
+      final msg = value['message'];
+      if (msg is String) errors['${entry.key}'] = msg;
+    }
+  }
+  return errors;
+}
+
 ApiException mapHttpError(int status, Object? data) {
-  final body = data is Map ? data : const {};
+  final body = data is Map ? data.cast<String, dynamic>() : const {};
   final message = body['message'] is String ? body['message'] as String : null;
+  final fields = _fieldErrors(body);
 
   return switch (status) {
+    400 when fields.isNotEmpty => ApiValidationException(
+      fields,
+      message ?? 'Проверьте правильность заполнения полей.',
+    ),
     401 => UnauthorizedException(message ?? 'Требуется вход в систему.'),
     403 => ForbiddenException(
       message ?? 'Недостаточно прав для этого действия.',

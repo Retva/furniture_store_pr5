@@ -48,7 +48,7 @@ void main() {
       final result = await products.find(
         const ProductQuery(
           search: 'диван',
-          categoryId: 1,
+          categoryId: '1',
           priceFrom: 50000,
           priceTo: 120000,
         ),
@@ -62,8 +62,8 @@ void main() {
     });
 
     test('фильтр по производителю', () async {
-      final result = await products.find(const ProductQuery(manufacturerId: 7));
-      expect(result.items.every((p) => p.manufacturerId == 7), isTrue);
+      final result = await products.find(const ProductQuery(manufacturerId: '7'));
+      expect(result.items.every((p) => p.manufacturerId == '7'), isTrue);
       expect(result.total, 4);
     });
 
@@ -113,7 +113,7 @@ void main() {
 
   group('Удаление', () {
     test('логическое удаление и восстановление', () async {
-      await products.softDelete(1);
+      await products.softDelete('1');
       var result = await products.find(const ProductQuery(search: 'DV-1001'));
       expect(result.total, 0);
 
@@ -122,27 +122,27 @@ void main() {
       );
       expect(result.items.single.isDeleted, isTrue);
 
-      await products.restore(1);
+      await products.restore('1');
       result = await products.find(const ProductQuery(search: 'DV-1001'));
       expect(result.items.single.isDeleted, isFalse);
     });
 
     test('deleteMany считает только действительно удалённые', () async {
-      final count = await products.deleteMany([1, 2, 41, 999]);
+      final count = await products.deleteMany(['1', '2', '41', '999']);
       expect(count, 2);
-      final again = await products.deleteMany([1, 2]);
+      final again = await products.deleteMany(['1', '2']);
       expect(again, 0);
     });
 
     test('физическое удаление стирает запись', () async {
-      await products.hardDelete(3);
-      expect(await products.findById(3), isNull);
+      await products.hardDelete('3');
+      expect(await products.findById('3'), isNull);
     });
 
     test('удаление несуществующей записи — понятная ошибка', () async {
       Object? error;
       try {
-        await products.softDelete(999);
+        await products.softDelete('999');
       } catch (e) {
         error = e;
       }
@@ -154,8 +154,8 @@ void main() {
     test('запрос переводится в адрес и обратно без потерь', () {
       const query = ProductQuery(
         search: 'диван',
-        categoryId: 1,
-        manufacturerId: 6,
+        categoryId: '1',
+        manufacturerId: '6',
         priceFrom: 10000,
         priceTo: 90000,
         sortField: 'price',
@@ -187,15 +187,15 @@ void main() {
       expect(query.size, 10);
       expect(query.sortField, 'name');
       expect(query.sortAscending, isFalse);
-      expect(query.categoryId, isNull);
+      expect(query.categoryId, 'abc');
     });
 
     test('смена условий возвращает на первую страницу', () {
-      const query = ProductQuery(page: 7, categoryId: 2);
+      const query = ProductQuery(page: 7, categoryId: '2');
       expect(query.copyWith(search: 'стол').page, 1);
       expect(query.withPage(3).page, 3);
       expect(query.copyWith(categoryId: null).categoryId, isNull);
-      expect(query.copyWith(search: 'x').categoryId, 2);
+      expect(query.copyWith(search: 'x').categoryId, '2');
     });
 
     test('повторный щелчок по колонке меняет направление', () {

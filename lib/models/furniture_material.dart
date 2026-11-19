@@ -25,7 +25,7 @@ class FurnitureMaterial implements Entity {
   ];
 
   @override
-  final int id;
+  final String id;
   final String name;
   final String kind;
   final String origin;
@@ -38,7 +38,7 @@ class FurnitureMaterial implements Entity {
 
   factory FurnitureMaterial.fromJson(Map<String, dynamic> json) =>
       FurnitureMaterial(
-        id: JsonRead.integer(json['id']),
+        id: JsonRead.id(json['id']),
         name: JsonRead.text(json['name']),
         kind: JsonRead.text(json['kind'], kinds.first),
         origin: JsonRead.text(json['origin']),
@@ -54,7 +54,7 @@ class FurnitureMaterial implements Entity {
   };
 
   FurnitureMaterial copyWith({
-    int? id,
+    String? id,
     String? name,
     String? kind,
     String? origin,

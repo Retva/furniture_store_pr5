@@ -116,25 +116,25 @@ class ReferenceDataNotifier extends ChangeNotifier {
       [...list]
         ..sort((a, b) => key(a).toLowerCase().compareTo(key(b).toLowerCase()));
 
-  ProductCategory? categoryOf(int id) =>
-      _categoryList.where((c) => c.id == id).firstOrNull;
+  ProductCategory? categoryOf(String id) =>
+      id.isEmpty ? null : _categoryList.where((c) => c.id == id).firstOrNull;
 
-  Manufacturer? manufacturerOf(int id) =>
-      _manufacturerList.where((m) => m.id == id).firstOrNull;
+  Manufacturer? manufacturerOf(String id) =>
+      id.isEmpty ? null : _manufacturerList.where((m) => m.id == id).firstOrNull;
 
-  FurnitureMaterial? materialOf(int id) =>
-      _materialList.where((m) => m.id == id).firstOrNull;
+  FurnitureMaterial? materialOf(String id) =>
+      id.isEmpty ? null : _materialList.where((m) => m.id == id).firstOrNull;
 
-  String categoryName(int id) => categoryOf(id)?.name ?? '—';
+  String categoryName(String id) => categoryOf(id)?.name ?? '—';
 
-  String manufacturerName(int id) => manufacturerOf(id)?.name ?? '—';
+  String manufacturerName(String id) => manufacturerOf(id)?.name ?? '—';
 
-  String materialName(int id) => materialOf(id)?.name ?? '—';
+  String materialName(String id) => materialOf(id)?.name ?? '—';
 
-  String categoryNames(List<int> ids) =>
+  String categoryNames(List<String> ids) =>
       ids.isEmpty ? '—' : ids.map(categoryName).join(', ');
 
-  String materialNames(List<int> ids) =>
+  String materialNames(List<String> ids) =>
       ids.isEmpty ? '—' : ids.map(materialName).join(', ');
 
   @override

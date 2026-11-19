@@ -30,8 +30,8 @@ class EntityCardList<T extends Entity> extends StatelessWidget {
   final Widget Function(T item)? details;
   final void Function(T item) onOpen;
 
-  final Set<int> selected;
-  final ValueChanged<int>? onToggleSelect;
+  final Set<String> selected;
+  final ValueChanged<String>? onToggleSelect;
   final List<Widget> Function(T item)? actions;
 
   @override

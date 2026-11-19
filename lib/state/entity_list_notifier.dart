@@ -16,11 +16,11 @@ class EntityListNotifier<T extends Entity, Q extends ListQuery>
 
   Q _query;
   ListState<T> _state = ListLoading<T>();
-  final Set<int> _selected = {};
+  final Set<String> _selected = {};
 
   /// Записи, над которыми сейчас выполняется действие. Их кнопки
   /// неактивны, чтобы повторное нажатие не отправило второй запрос.
-  final Set<int> _busy = {};
+  final Set<String> _busy = {};
   bool _deletingSelection = false;
 
   int _requestId = 0;
@@ -29,11 +29,11 @@ class EntityListNotifier<T extends Entity, Q extends ListQuery>
   Q get query => _query;
   ListState<T> get state => _state;
 
-  Set<int> get selected => Set.unmodifiable(_selected);
+  Set<String> get selected => Set.unmodifiable(_selected);
   bool get hasSelection => _selected.isNotEmpty;
-  bool isSelected(int id) => _selected.contains(id);
+  bool isSelected(String id) => _selected.contains(id);
 
-  bool isBusy(int id) => _busy.contains(id);
+  bool isBusy(String id) => _busy.contains(id);
   bool get deletingSelection => _deletingSelection;
 
   /// Последняя полученная страница — и во время загрузки следующей тоже.
@@ -71,13 +71,13 @@ class EntityListNotifier<T extends Entity, Q extends ListQuery>
     await load();
   }
 
-  void toggleSelection(int id) {
+  void toggleSelection(String id) {
     _selected.contains(id) ? _selected.remove(id) : _selected.add(id);
     _notify();
   }
 
   /// Отметить или снять все записи из [ids] — флажок в заголовке таблицы.
-  void setSelection(Iterable<int> ids, bool selected) {
+  void setSelection(Iterable<String> ids, bool selected) {
     selected ? _selected.addAll(ids) : _selected.removeAll(ids);
     _notify();
   }
@@ -103,21 +103,21 @@ class EntityListNotifier<T extends Entity, Q extends ListQuery>
     }
   }
 
-  Future<void> softDelete(int id) => _track(id, () async {
+  Future<void> softDelete(String id) => _track(id, () async {
     await _repository.softDelete(id);
     _selected.remove(id);
   });
 
-  Future<void> hardDelete(int id) => _track(id, () async {
+  Future<void> hardDelete(String id) => _track(id, () async {
     await _repository.hardDelete(id);
     _selected.remove(id);
   });
 
-  Future<void> restore(int id) => _track(id, () => _repository.restore(id));
+  Future<void> restore(String id) => _track(id, () => _repository.restore(id));
 
   /// Выполняет действие над записью, пока её кнопки заблокированы, и
   /// перезагружает страницу.
-  Future<void> _track(int id, Future<void> Function() action) async {
+  Future<void> _track(String id, Future<void> Function() action) async {
     if (!_busy.add(id)) return;
     _notify();
     try {

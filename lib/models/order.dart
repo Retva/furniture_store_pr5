@@ -15,10 +15,10 @@ class Order {
     this.cancelledAt,
   });
 
-  final int id;
-  final int customerId;
+  final String id;
+  final String customerId;
   final String customerName;
-  final int productId;
+  final String productId;
   final String productName;
   final int quantity;
   final int total;
@@ -31,15 +31,18 @@ class Order {
     final customer = JsonRead.map(json['customer']) ?? const {};
     final product = JsonRead.map(json['product']) ?? const {};
     return Order(
-      id: JsonRead.integer(json['id']),
+      id: JsonRead.id(json['id']),
       customerId: JsonRead.refId(json, 'customerId', 'customer'),
-      customerName: JsonRead.text(customer['fullName']),
+      customerName: JsonRead.text(
+        customer['fullName'] ?? customer['full_name'],
+      ),
       productId: JsonRead.refId(json, 'productId', 'product'),
       productName: JsonRead.text(product['name']),
       quantity: JsonRead.integer(json['quantity']),
       total: JsonRead.integer(json['total']),
-      createdAt: JsonRead.date(json['createdAt']) ?? DateTime.now(),
-      cancelledAt: JsonRead.date(json['cancelledAt']),
+      createdAt:
+          JsonRead.date(json['createdAt'] ?? json['created']) ?? DateTime.now(),
+      cancelledAt: JsonRead.date(json['cancelledAt'] ?? json['cancelled_at']),
     );
   }
 }

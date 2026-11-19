@@ -1,10 +1,11 @@
 import 'package:dio/dio.dart';
 
 import '../models/app_user.dart';
+import '../repositories/api/pb_api.dart';
 import 'api_exception.dart';
 import 'api_session.dart';
 
-/// Клиент эндпоинтов `/auth/*`, `/users`, `/stats`, `/my-orders`.
+/// Клиент PocketBase: вход, пользователи, статистика, личные заказы.
 class AuthApi {
   AuthApi(this._dio);
 
@@ -12,84 +13,133 @@ class AuthApi {
 
   Options get _skip => Options(extra: {ApiSession.skipAuth: true});
 
-  Future<AuthTokens> login(String username, String password) => guard(() async {
+  static const _users = '/api/collections/users/records';
+
+  Future<AuthTokens> login(String identity, String password) => guard(() async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/login',
-      data: {'username': username, 'password': password},
+      '/api/collections/users/auth-with-password',
+      data: {'identity': identity, 'password': password},
       options: _skip,
     );
     return AuthTokens.fromJson(response.data!);
   });
 
   Future<AuthTokens> register({
+    required String email,
     required String username,
     required String password,
     required String fullName,
   }) => guard(() async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/register',
+      _users,
       data: {
+        'email': email,
         'username': username,
         'password': password,
-        'fullName': fullName,
+        'passwordConfirm': password,
+        'name': fullName,
+        'role': 'viewer',
       },
       options: _skip,
     );
-    return AuthTokens.fromJson(response.data!);
+    response.data;
+    return login(email, password);
   });
 
-  Future<AuthTokens> refresh(String refreshToken) => guard(() async {
+  /// Обновление сессии; заголовок Authorization подставляет перехватчик.
+  Future<AuthTokens> refresh() => guard(() async {
     final response = await _dio.post<Map<String, dynamic>>(
-      '/auth/refresh',
-      data: {'refreshToken': refreshToken},
-      options: _skip,
+      '/api/collections/users/auth-refresh',
     );
     return AuthTokens.fromJson(response.data!);
   });
 
   Future<AppUser> me() => guard(() async {
-    final response = await _dio.get<Map<String, dynamic>>('/auth/me');
-    return AppUser.fromJson(response.data!);
+    final tokens = await refresh();
+    return tokens.user;
   });
 
-  Future<void> logout(String? refreshToken) => guard(() async {
-    await _dio.post<void>(
-      '/auth/logout',
-      data: {'refreshToken': refreshToken},
-      options: _skip,
-    );
-  });
+  Future<void> logout(String? refreshToken) async {}
 
   Future<List<AppUser>> listUsers() => guard(() async {
-    final response = await _dio.get<Map<String, dynamic>>('/users');
+    final response = await _dio.get<Map<String, dynamic>>(
+      _users,
+      queryParameters: {'page': 1, 'perPage': 200, 'sort': 'username'},
+    );
     final items = response.data!['items'] as List<dynamic>? ?? const [];
     return [
-      for (final item in items) AppUser.fromJson(item as Map<String, dynamic>),
+      for (final item in items)
+        AppUser.fromJson(PbApi.userFromPb(item as Map<String, dynamic>)),
     ];
   });
 
-  Future<AppUser> updateUserRole(int id, RoleUpdate update) => guard(() async {
-    final response = await _dio.put<Map<String, dynamic>>(
-      '/users/$id',
-      data: update.toJson(),
+  Future<AppUser> updateUserRole(String id, RoleUpdate update) => guard(() async {
+    final response = await _dio.patch<Map<String, dynamic>>(
+      '$_users/$id',
+      data: {
+        'role': update.role,
+        if (update.fullName != null) 'name': update.fullName,
+      },
     );
-    return AppUser.fromJson(response.data!);
+    return AppUser.fromJson(PbApi.userFromPb(response.data!));
   });
 
   Future<Map<String, int>> stats() => guard(() async {
-    final response = await _dio.get<Map<String, dynamic>>('/stats');
-    final data = response.data!;
-    return {
-      for (final e in data.entries)
-        if (e.value is num) e.key: (e.value as num).toInt(),
+    const specs = {
+      'products': (name: 'products', filter: 'deleted_at = ""'),
+      'manufacturers': (name: 'manufacturers', filter: 'deleted_at = ""'),
+      'categories': (name: 'categories', filter: 'deleted_at = ""'),
+      'materials': (name: 'materials', filter: 'deleted_at = ""'),
+      'customers': (name: 'customers', filter: 'deleted_at = ""'),
+      'orders': (name: 'orders', filter: 'cancelled_at = ""'),
+      'users': (name: 'users', filter: ''),
     };
+    final result = <String, int>{};
+    for (final entry in specs.entries) {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/api/collections/${entry.value.name}/records',
+        queryParameters: {
+          'page': 1,
+          'perPage': 1,
+          if (entry.value.filter.isNotEmpty) 'filter': entry.value.filter,
+        },
+      );
+      result[entry.key] = (response.data!['totalItems'] as int?) ?? 0;
+    }
+    return result;
   });
 
-  Future<List<Map<String, dynamic>>> myOrders() => guard(() async {
-    final response = await _dio.get<Map<String, dynamic>>('/my-orders');
+  Future<List<Map<String, dynamic>>> myOrders(String userId) => guard(() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/api/collections/orders/records',
+      queryParameters: {
+        'page': 1,
+        'perPage': 100,
+        'sort': '-created',
+        'filter': 'user = "${PbApi.escapeFilter(userId)}"',
+        'expand': 'product,customer',
+      },
+    );
     final items = response.data!['items'] as List<dynamic>? ?? const [];
-    return [for (final item in items) Map<String, dynamic>.from(item as Map)];
+    return [
+      for (final item in items)
+        _orderForUi((item as Map).cast<String, dynamic>()),
+    ];
   });
+
+  static Map<String, dynamic> _orderForUi(Map<String, dynamic> pb) {
+    final expand = pb['expand'] as Map<String, dynamic>? ?? const {};
+    final product = expand['product'] ?? pb['product'];
+    return {
+      'id': pb['id'],
+      'quantity': pb['quantity'],
+      'total': pb['total'],
+      'cancelledAt': pb['cancelled_at'] ?? pb['cancelledAt'],
+      'product': product is Map
+          ? {'name': product['name'] ?? product['id']}
+          : product,
+    };
+  }
 }
 
 class RoleUpdate {

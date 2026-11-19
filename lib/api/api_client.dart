@@ -72,14 +72,18 @@ class AuthInterceptor extends Interceptor {
   static const _retried = 'authRetried';
 
   bool _skip(RequestOptions o) => o.extra[ApiSession.skipAuth] == true;
-  bool _isAuthPath(RequestOptions o) =>
-      o.path.contains('/auth/') || o.uri.path.contains('/auth/');
+  bool _isAuthPath(RequestOptions o) {
+    final p = o.path;
+    if (p.contains('auth-with-password') || p.contains('auth-refresh')) {
+      return true;
+    }
+    return p.contains('/collections/users/records') &&
+        o.method.toUpperCase() == 'POST' &&
+        o.extra[ApiSession.skipAuth] == true;
+  }
 
   @override
-  void onRequest(
-    RequestOptions options,
-    RequestInterceptorHandler handler,
-  ) {
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     if (!_skip(options)) {
       final token = session.accessToken;
       if (token != null) {

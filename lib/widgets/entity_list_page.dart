@@ -230,7 +230,7 @@ class _EntityListPageState<
               if (compact)
                 EntityCardList<T>(
                   items: result.items,
-                  selected: canManage ? notifier.selected : <int>{},
+                  selected: canManage ? notifier.selected : <String>{},
                   onToggleSelect: canManage ? notifier.toggleSelection : (_) {},
                   onOpen: _open,
                   actions: (item) => _actions(item, auth),
@@ -241,7 +241,7 @@ class _EntityListPageState<
               else
                 EntityTable<T>(
                   items: result.items,
-                  selected: canManage ? notifier.selected : <int>{},
+                  selected: canManage ? notifier.selected : <String>{},
                   onToggleSelect: canManage ? notifier.toggleSelection : (_) {},
                   onSelectAll: canManage
                       ? notifier.setSelection

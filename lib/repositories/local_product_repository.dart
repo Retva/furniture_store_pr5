@@ -48,7 +48,7 @@ class LocalProductRepository extends LocalCrudRepository<Product, ProductQuery>
       : item.copyWith(deletedAt: deletedAt);
 
   @override
-  Product withId(Product item, int id) => item.copyWith(id: id);
+  Product withId(Product item, String id) => item.copyWith(id: id);
 
   @override
   Map<String, String> uniquenessErrors(Product item) => {
@@ -59,14 +59,14 @@ class LocalProductRepository extends LocalCrudRepository<Product, ProductQuery>
   int _count(bool Function(Product) test) => records.where(test).length;
 
   @override
-  Future<int> countByManufacturer(int id) async =>
+  Future<int> countByManufacturer(String id) async =>
       _count((p) => p.manufacturerId == id);
 
   @override
-  Future<int> countByCategory(int id) async =>
+  Future<int> countByCategory(String id) async =>
       _count((p) => p.categoryIds.contains(id));
 
   @override
-  Future<int> countByMaterial(int id) async =>
+  Future<int> countByMaterial(String id) async =>
       _count((p) => p.materialIds.contains(id));
 }
